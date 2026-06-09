@@ -19,6 +19,9 @@ import {
   ScanSearch,
   Settings,
   Sparkles,
+  Camera,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,355 @@ function Screenshot({
         </figcaption>
       )}
     </motion.figure>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Browser Frame Wrapper
+// ---------------------------------------------------------------------------
+
+function BrowserFrame({
+  children,
+  caption,
+}: {
+  children: React.ReactNode;
+  caption?: string;
+}) {
+  return (
+    <motion.figure
+      variants={fadeUp}
+      initial="hidden"
+      whileInView="visible"
+      transition={{ duration: 0.5 }}
+      viewport={{ once: true }}
+      className="my-8"
+    >
+      <div className="rounded-xl overflow-hidden border border-border shadow-lg">
+        <div className="bg-primary/5 px-4 py-2 flex items-center gap-2 border-b border-border">
+          <div className="flex gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-border" />
+            <div className="w-2.5 h-2.5 rounded-full bg-border" />
+            <div className="w-2.5 h-2.5 rounded-full bg-border" />
+          </div>
+          <div className="flex-1 bg-background rounded-md px-3 py-0.5 text-[10px] text-muted-foreground text-center">
+            classpulse.app
+          </div>
+        </div>
+        <div className="bg-background p-4 sm:p-6">{children}</div>
+      </div>
+      {caption && (
+        <figcaption className="mt-3 text-sm text-muted-foreground text-center italic">
+          {caption}
+        </figcaption>
+      )}
+    </motion.figure>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Simulated UI Specimens
+// ---------------------------------------------------------------------------
+
+function SimulatedUpload() {
+  const files = [
+    { name: 'paper_01.jpg', color: 'bg-primary/20' },
+    { name: 'paper_02.jpg', color: 'bg-accent/20' },
+    { name: 'paper_03.jpg', color: 'bg-success/20' },
+    { name: 'paper_04.jpg', color: 'bg-primary/10' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Upload zone */}
+      <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 bg-primary/5">
+        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+          <Camera className="w-5 h-5 text-primary" />
+        </div>
+        <p className="text-xs font-medium text-foreground">Drop photos here or use camera</p>
+        <p className="text-[10px] text-muted-foreground">JPG, PNG — up to 20 files</p>
+        <div className="flex gap-2 mt-1">
+          <span className="text-[10px] bg-primary text-primary-foreground rounded-full px-3 py-1 font-medium">
+            Choose Files
+          </span>
+          <span className="text-[10px] bg-background border border-border text-foreground rounded-full px-3 py-1 font-medium">
+            Open Camera
+          </span>
+        </div>
+      </div>
+
+      {/* Uploaded thumbnails */}
+      <div className="grid grid-cols-4 gap-2">
+        {files.map((f) => (
+          <div key={f.name} className="rounded-lg overflow-hidden border border-border">
+            <div className={`h-14 ${f.color} flex items-center justify-center`}>
+              <Upload className="w-4 h-4 text-muted-foreground" />
+            </div>
+            <div className="px-1.5 py-1 bg-card">
+              <p className="text-[10px] text-muted-foreground truncate">{f.name}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress */}
+      <div className="flex items-center justify-between bg-success/10 rounded-lg px-4 py-2.5 border border-success/20">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-success" />
+          <span className="text-xs font-medium text-foreground">4 of 4 uploaded</span>
+        </div>
+        <span className="text-[10px] bg-success text-white rounded-full px-3 py-1 font-medium">
+          Continue →
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SimulatedReviewConfirm() {
+  const rows = [
+    { name: 'Sarah Martinez', score: '87/100', match: 'Exact', status: 'ok' },
+    { name: 'James Thompson', score: '72/100', match: 'Fuzzy', status: 'warn' },
+    { name: 'Emily Rodriguez', score: '94/100', match: 'Exact', status: 'ok' },
+    { name: 'David Chen', score: '68/100', match: 'Exact', status: 'ok' },
+    { name: 'Unknown Student', score: '55/100', match: 'Unmatched', status: 'err' },
+  ];
+
+  const matchChip = (match: string, status: string) => {
+    if (status === 'ok')
+      return (
+        <span className="text-[10px] rounded-full px-2 py-0.5 bg-success/10 text-success font-medium">
+          {match}
+        </span>
+      );
+    if (status === 'warn')
+      return (
+        <span className="text-[10px] rounded-full px-2 py-0.5 bg-warning/10 text-warning font-medium">
+          {match}
+        </span>
+      );
+    return (
+      <span className="text-[10px] rounded-full px-2 py-0.5 bg-destructive/10 text-destructive font-medium">
+        {match}
+      </span>
+    );
+  };
+
+  const statusIcon = (status: string) => {
+    if (status === 'ok') return <CheckCircle className="w-3.5 h-3.5 text-success" />;
+    if (status === 'warn') return <AlertTriangle className="w-3.5 h-3.5 text-warning" />;
+    return <X className="w-3.5 h-3.5 text-destructive" />;
+  };
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="grid grid-cols-4 bg-primary/5 border-b border-border px-3 py-2">
+        <span className="text-[10px] font-semibold text-foreground">Student</span>
+        <span className="text-[10px] font-semibold text-foreground">Score</span>
+        <span className="text-[10px] font-semibold text-foreground">Match</span>
+        <span className="text-[10px] font-semibold text-foreground text-center">Status</span>
+      </div>
+      {rows.map((row, i) => (
+        <div
+          key={row.name}
+          className={`grid grid-cols-4 items-center px-3 py-2 ${
+            i < rows.length - 1 ? 'border-b border-border' : ''
+          } ${row.status === 'err' ? 'bg-destructive/5' : row.status === 'warn' ? 'bg-warning/5' : ''}`}
+        >
+          <span className="text-[10px] text-foreground font-medium truncate pr-2">{row.name}</span>
+          <span className="text-[10px] text-muted-foreground">{row.score}</span>
+          <div>{matchChip(row.match, row.status)}</div>
+          <div className="flex justify-center">{statusIcon(row.status)}</div>
+        </div>
+      ))}
+      <div className="px-3 py-2 bg-card border-t border-border flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">5 records · 1 needs review</span>
+        <span className="text-[10px] bg-accent text-accent-foreground rounded-full px-3 py-1 font-medium">
+          Confirm &amp; Analyze →
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SimulatedClassOverview() {
+  const bars = [2, 4, 8, 6, 4];
+  const labels = ['0-59', '60-69', '70-79', '80-89', '90+'];
+  const maxBar = Math.max(...bars);
+
+  const skills = [
+    { name: 'Number Operations', pct: 85, color: 'bg-success' },
+    { name: 'Fractions & Decimals', pct: 72, color: 'bg-success' },
+    { name: 'Word Problems', pct: 58, color: 'bg-warning' },
+    { name: 'Geometry Basics', pct: 45, color: 'bg-destructive' },
+    { name: 'Data Interpretation', pct: 82, color: 'bg-success' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-primary/10 rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground">Class Average</p>
+          <p className="text-sm font-bold text-primary font-heading">78%</p>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground">Students</p>
+          <p className="text-sm font-bold text-foreground font-heading">24</p>
+        </div>
+        <div className="bg-accent/10 rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground">Skills Tracked</p>
+          <p className="text-sm font-bold text-accent font-heading">6</p>
+        </div>
+      </div>
+
+      {/* Score distribution */}
+      <div className="bg-card border border-border rounded-lg p-3">
+        <p className="text-[10px] font-semibold text-foreground mb-2">Score Distribution</p>
+        <div className="flex items-end gap-1.5 h-16">
+          {bars.map((h, i) => (
+            <div key={labels[i]} className="flex-1 flex flex-col items-center gap-1">
+              <div
+                className="w-full rounded-t bg-primary/70"
+                style={{ height: `${(h / maxBar) * 52}px` }}
+              />
+              <span className="text-[9px] text-muted-foreground">{labels[i]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Skill breakdown */}
+      <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+        <p className="text-[10px] font-semibold text-foreground mb-1">Skill Breakdown</p>
+        {skills.map((s) => (
+          <div key={s.name} className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground w-32 shrink-0 truncate">{s.name}</span>
+            <div className="flex-1 h-2 rounded-full bg-border overflow-hidden">
+              <div className={`h-full rounded-full ${s.color}`} style={{ width: `${s.pct}%` }} />
+            </div>
+            <span className="text-[10px] font-medium text-foreground w-7 text-right shrink-0">
+              {s.pct}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SimulatedStudentDetail() {
+  const skills = [
+    { name: 'Number Operations', pct: 95, color: 'bg-success', dot: 'bg-success' },
+    { name: 'Fractions & Decimals', pct: 88, color: 'bg-success', dot: 'bg-success' },
+    { name: 'Word Problems', pct: 72, color: 'bg-warning', dot: 'bg-warning' },
+    { name: 'Geometry Basics', pct: 85, color: 'bg-success', dot: 'bg-success' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {/* Student name card */}
+      <div className="flex items-center justify-between bg-primary/10 rounded-lg px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+            <User className="w-4 h-4 text-primary-foreground" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-foreground">Sarah Martinez</p>
+            <p className="text-[10px] text-muted-foreground">Grade 6, Period 2</p>
+          </div>
+        </div>
+        <div className="bg-primary text-primary-foreground rounded-full px-3 py-1">
+          <span className="text-xs font-bold">87/100</span>
+        </div>
+      </div>
+
+      {/* Per-skill mastery */}
+      <div className="bg-card border border-border rounded-lg p-3 space-y-2">
+        <p className="text-[10px] font-semibold text-foreground mb-1">Skill Mastery</p>
+        {skills.map((s) => (
+          <div key={s.name} className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
+            <span className="text-[10px] text-muted-foreground w-32 shrink-0 truncate">{s.name}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
+              <div className={`h-full rounded-full ${s.color}`} style={{ width: `${s.pct}%` }} />
+            </div>
+            <span className="text-[10px] font-medium text-foreground w-7 text-right shrink-0">
+              {s.pct}%
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* AI narrative snippet */}
+      <div className="bg-accent/5 border border-accent/20 rounded-lg px-3 py-2.5">
+        <p className="text-[10px] font-semibold text-accent mb-1">AI Insight</p>
+        <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-2">
+          Strengths: Strong computational skills across number operations and basic algebra. Consistent
+          accuracy suggests solid procedural fluency. Word problems remain the primary gap — likely
+          difficulty translating language into equations rather than arithmetic weakness...
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SimulatedInterventionPlanner() {
+  const interventions = [
+    {
+      priority: 1,
+      skill: 'Word Problems',
+      desc: 'Students struggle translating problem language into mathematical expressions.',
+      tiers: ['5 min', '30 min', '1-on-1'],
+      accent: true,
+    },
+    {
+      priority: 2,
+      skill: 'Geometry Basics',
+      desc: 'Low mastery on area/perimeter — targeted reteaching recommended.',
+      tiers: ['5 min', '30 min', '1-on-1'],
+      accent: false,
+    },
+    {
+      priority: 3,
+      skill: 'Fractions & Decimals',
+      desc: 'Mixed results; small group review before next unit.',
+      tiers: ['5 min', '30 min', '1-on-1'],
+      accent: false,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {interventions.map((iv) => (
+        <div key={iv.priority} className="bg-card border border-border rounded-lg p-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                iv.accent
+                  ? 'bg-accent text-accent-foreground'
+                  : 'bg-primary/10 text-primary'
+              }`}
+            >
+              {iv.priority}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground">{iv.skill}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{iv.desc}</p>
+              <div className="flex gap-1.5 mt-2">
+                {iv.tiers.map((t) => (
+                  <span
+                    key={t}
+                    className="text-[10px] rounded-full px-2 py-0.5 bg-primary/10 text-primary font-medium border border-primary/20"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -512,11 +864,9 @@ function CoreUserFlowSection() {
             alt="Setup Wizard — creating a new analysis"
             caption="Setup Wizard: choose assignment type, enter details, configure scoring"
           />
-          <Screenshot
-            src="/screenshots/upload.png"
-            alt="Upload page — drag and drop or camera capture"
-            caption="Upload: drag-and-drop photos or use mobile camera capture"
-          />
+          <BrowserFrame caption="Upload: drag-and-drop photos or use mobile camera capture">
+            <SimulatedUpload />
+          </BrowserFrame>
         </motion.div>
 
         {/* Step 2 */}
@@ -578,11 +928,9 @@ function CoreUserFlowSection() {
               </p>
             </div>
           </div>
-          <Screenshot
-            src="/screenshots/review-confirm.png"
-            alt="Review & Confirm page — teacher verifies extracted data"
-            caption="Review & Confirm: every extraction is teacher-verified before analysis"
-          />
+          <BrowserFrame caption="Review &amp; Confirm: every extraction is teacher-verified before analysis">
+            <SimulatedReviewConfirm />
+          </BrowserFrame>
         </motion.div>
 
         {/* Step 4 */}
@@ -614,11 +962,9 @@ function CoreUserFlowSection() {
               </p>
             </div>
           </div>
-          <Screenshot
-            src="/screenshots/class-overview.png"
-            alt="Class Overview — stats, skill breakdown, mastery levels"
-            caption="Class Overview: algorithmic stats + AI-inferred skills with inline editing"
-          />
+          <BrowserFrame caption="Class Overview: algorithmic stats + AI-inferred skills with inline editing">
+            <SimulatedClassOverview />
+          </BrowserFrame>
         </motion.div>
 
         {/* Step 5 */}
@@ -644,11 +990,9 @@ function CoreUserFlowSection() {
               </p>
             </div>
           </div>
-          <Screenshot
-            src="/screenshots/student-detail.png"
-            alt="Student Detail — individual performance breakdown"
-            caption="Student Detail: per-skill mastery with class comparison and AI narrative"
-          />
+          <BrowserFrame caption="Student Detail: per-skill mastery with class comparison and AI narrative">
+            <SimulatedStudentDetail />
+          </BrowserFrame>
         </motion.div>
 
         {/* Step 6 */}
@@ -675,11 +1019,9 @@ function CoreUserFlowSection() {
               </p>
             </div>
           </div>
-          <Screenshot
-            src="/screenshots/interventions.png"
-            alt="Intervention Planner — prioritized recommendations"
-            caption="Intervention Planner: 3 priorities x 3 effort levels = actionable next steps"
-          />
+          <BrowserFrame caption="Intervention Planner: 3 priorities x 3 effort levels = actionable next steps">
+            <SimulatedInterventionPlanner />
+          </BrowserFrame>
         </motion.div>
       </div>
     </Section>

@@ -433,9 +433,9 @@ function CoreUserFlowSection() {
     { label: 'Upload', icon: <Upload className="w-3.5 h-3.5" />, gate: false },
     { label: 'Extract', icon: <ScanSearch className="w-3.5 h-3.5" />, gate: false },
     { label: 'Review', icon: <CheckCircle className="w-3.5 h-3.5" />, gate: true },
-    { label: 'Overview', icon: <BarChart3 className="w-3.5 h-3.5" />, gate: false },
+    { label: 'Overview', icon: <BarChart3 className="w-3.5 h-3.5" />, gate: true },
     { label: 'Student', icon: <User className="w-3.5 h-3.5" />, gate: false },
-    { label: 'Intervene', icon: <Target className="w-3.5 h-3.5" />, gate: true },
+    { label: 'Intervene', icon: <Target className="w-3.5 h-3.5" />, gate: false },
   ];
 
   return (

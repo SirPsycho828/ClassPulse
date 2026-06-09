@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #1E3A5F; }
+    .pulse { fill: none; stroke: #D4915E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { fill: #D4915E; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #1E3A5F; }
+      .pulse { stroke: #D4915E; }
+      .dot { fill: #D4915E; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="7"/>
+  <polyline class="pulse" points="4,17 9,17 11,12 14,22 17,8 20,20 22,15 25,17 28,17"/>
+  <circle class="dot" cx="28" cy="17" r="1.5" opacity="0.8"/>
+</svg>

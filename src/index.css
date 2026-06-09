@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Design System — ClassPulse ("Chalk & Slate")
+   Source of truth: docs/design-system.md
+   ============================================================ */
+
+@theme {
+  /* Typography */
+  --font-heading: 'Newsreader', Georgia, serif;
+  --font-body: 'Karla', system-ui, sans-serif;
+
+  /* Core Colors */
+  --color-primary: #1E3A5F;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #E8E2D9;
+  --color-secondary-foreground: #1E3A5F;
+  --color-accent: #D4915E;
+  --color-accent-foreground: #FFFFFF;
+
+  /* Surfaces */
+  --color-background: #F8F5F0;
+  --color-foreground: #1A2332;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #1A2332;
+  --color-muted: #EDE8E0;
+  --color-muted-foreground: #7A7265;
+
+  /* Borders & Input */
+  --color-border: #DDD6CB;
+  --color-input: #D4CCC0;
+  --color-ring: #D4915E;
+
+  /* Semantic */
+  --color-destructive: #DC2626;
+  --color-destructive-foreground: #FFFFFF;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-gold: #B8860B;
+
+  /* Mastery Colors (domain-specific) */
+  --color-mastery-high: #16A34A;
+  --color-mastery-medium: #D97706;
+  --color-mastery-low: #DC2626;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows (warm-tinted) */
+  --shadow-sm: 0 1px 2px hsl(37 20% 60% / 0.08);
+  --shadow-md: 0 4px 12px hsl(37 20% 50% / 0.1);
+  --shadow-lg: 0 8px 24px hsl(37 20% 40% / 0.12);
+  --shadow-xl: 0 16px 48px hsl(37 20% 30% / 0.15);
+
+  /* Animation */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --easing-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* Base Styles */
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+}
+
+/* Ink-Line Signature Animation */
+.ink-underline {
+  position: relative;
+  display: inline-block;
+}
+
+.ink-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: var(--color-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.ink-underline:hover::after {
+  transform: scaleX(1);
+}
+
+/* Micro-Interactions */
+
+/* Buttons — subtle scale + shadow on hover/active */
+a.rounded-full, button.rounded-full {
+  transition: transform var(--duration-fast) var(--easing-default),
+              box-shadow var(--duration-fast) var(--easing-default),
+              background-color var(--duration-fast) var(--easing-default),
+              color var(--duration-fast) var(--easing-default);
+}
+a.rounded-full:hover, button.rounded-full:hover {
+  transform: scale(1.02);
+}
+a.rounded-full:active, button.rounded-full:active {
+  transform: scale(0.98);
+}
+
+/* Clickable cards — subtle lift on hover */
+.card-hover {
+  transition: transform var(--duration-fast) var(--easing-default),
+              box-shadow var(--duration-fast) var(--easing-default);
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Input focus glow */
+input:focus, textarea:focus, select:focus {
+  transition: border-color var(--duration-fast) var(--easing-default),
+              box-shadow var(--duration-fast) var(--easing-default);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Chalk Texture Filter (for score badges on dark backgrounds) */
+svg.chalk-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+}

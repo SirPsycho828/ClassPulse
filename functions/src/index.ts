@@ -1054,7 +1054,7 @@ export const fetchAvailableModels = onCall(
           name: string;
           context_length: number;
           pricing: { prompt: string; completion: string };
-          architecture?: { modality?: string };
+          architecture?: { modality?: string; input_modalities?: string[] };
         }>;
       };
       const models = (data.data || []).map(
@@ -1063,20 +1063,30 @@ export const fetchAvailableModels = onCall(
           name: string;
           context_length: number;
           pricing: { prompt: string; completion: string };
-          architecture?: { modality?: string };
-        }) => ({
-          id: m.id,
-          name: m.name,
-          contextLength: m.context_length,
-          pricing: {
-            prompt: parseFloat(m.pricing?.prompt || '0') * 1000000,
-            completion: parseFloat(m.pricing?.completion || '0') * 1000000,
-          },
-          vision:
+          architecture?: { modality?: string; input_modalities?: string[] };
+        }) => {
+          // Extract provider from model ID (e.g. "anthropic/claude-sonnet-4-6" → "Anthropic")
+          const slug = m.id.split('/')[0] || '';
+          const provider = slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ');
+
+          // Detect vision support from architecture metadata
+          const hasVision =
             m.architecture?.modality === 'multimodal' ||
-            m.id.includes('vision') ||
-            m.id.includes('gemini'),
-        }),
+            (m.architecture?.input_modalities || []).includes('image') ||
+            m.id.includes('vision');
+
+          return {
+            id: m.id,
+            name: m.name,
+            provider,
+            contextLength: m.context_length,
+            pricing: {
+              prompt: parseFloat(m.pricing?.prompt || '0') * 1000000,
+              completion: parseFloat(m.pricing?.completion || '0') * 1000000,
+            },
+            vision: hasVision,
+          };
+        },
       );
 
       // Cache in Firestore (best-effort)

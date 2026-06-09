@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   collection,
   doc,
+  setDoc,
   writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -185,10 +186,11 @@ export default function Onboarding() {
 
     setSaving(true);
     try {
-      const batch = writeBatch(db);
+      // Create the class document first — Firestore security rules for the
+      // students subcollection use get() on the parent class doc, which must
+      // already exist before students can be written.
       const classRef = doc(collection(db, 'classes'));
-
-      batch.set(classRef, {
+      await setDoc(classRef, {
         teacherId: user.uid,
         name: className.trim(),
         gradeLevel,
@@ -198,6 +200,7 @@ export default function Onboarding() {
         updatedAt: serverTimestamp(),
       });
 
+      const batch = writeBatch(db);
       for (const student of students) {
         const studentRef = doc(collection(db, 'classes', classRef.id, 'students'));
         batch.set(studentRef, {

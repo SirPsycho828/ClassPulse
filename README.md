@@ -1,8 +1,8 @@
 <div align="center">
 
-# ClassPulse
+<img src="public/images/ClassPulse_FontArt.png" alt="ClassPulse — Take the pulse of your classroom" width="520">
 
-**AI-powered classroom analysis for K-12 teachers**
+<br>
 
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -10,64 +10,80 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06b6d4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev)
 
-Upload student papers or a CSV, get instant class-level analysis with skill breakdowns, misconception detection, and actionable intervention plans.
+Upload student papers or a CSV, get instant class-level analysis with skill breakdowns,<br>misconception detection, and actionable intervention plans.
 
 </div>
 
----
+<br>
 
 ## Overview
 
 ClassPulse helps K-12 teachers turn a stack of graded papers into a complete classroom analysis in under 2 minutes. Teachers upload photos of student work or a CSV export from their gradebook, and the AI pipeline extracts scores, matches students to the class roster, infers skill tags, and generates a full analysis with targeted intervention recommendations.
 
-**Key principle: "AI proposes, teacher decides."** Every AI output includes confidence scores and passes through a human review gate before becoming final.
+> **"AI proposes, teacher decides."** Every AI output includes confidence scores and passes through a human review gate before becoming final.
+
+<br>
 
 ## Features
 
 <table>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Two-Pass AI Pipeline
+#### Two-Pass AI Pipeline
 Upload images or CSV data. Pass 1 extracts and validates. Pass 2 analyzes with skill inference and misconception detection.
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Skill Breakdown
+#### Skill Breakdown
 AI-inferred skill tags map each question to educational topics. Teachers can edit tags inline with the override envelope pattern.
 
 </td>
 </tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Intervention Planner
+#### Intervention Planner
 Up to 3 prioritized interventions with three effort tiers each (quick 5-min, lesson 30-min, individual 1-on-1).
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Score Distribution
+#### Score Distribution
 Algorithmic stats (mean, median, std dev, outliers) with distribution shape detection (normal, bimodal, ceiling, floor).
 
 </td>
 </tr>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Roster Matching
+#### Roster Matching
 Four-tier matching: exact, alias, fuzzy (Levenshtein), unmatched. Teachers can save corrections as aliases for next time.
 
 </td>
-<td width="50%">
+<td width="50%" valign="top">
+<br>
+<p align="center"><img src="public/images/ClassPulse_AbstractMark.png" width="40"></p>
 
-### Model Admin
+#### Model Admin
 Configurable AI models per pipeline stage via OpenRouter. Swap extraction, skill inference, or analysis models from the admin UI.
 
 </td>
 </tr>
 </table>
+
+<br>
 
 ## Tech Stack
 
@@ -190,4 +206,3 @@ All models are configurable via the Admin > Models page.
 - Cloud Functions verify auth and ownership on every call
 - OpenRouter API key stored as a Cloud Functions secret, never exposed to client
 - Admin functions require `isAdmin: true` on the teacher profile
-</div>

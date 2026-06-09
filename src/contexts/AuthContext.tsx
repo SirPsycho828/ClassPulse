@@ -39,7 +39,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [teacher, setTeacher] = useState<TeacherProfile | null>(null);
 
   useEffect(() => {
+    let unsubTeacher: (() => void) | null = null;
+
     const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      // Clean up previous Firestore listener before processing new auth state
+      if (unsubTeacher) {
+        unsubTeacher();
+        unsubTeacher = null;
+      }
+
       setUser(firebaseUser);
       if (!firebaseUser) {
         setAuthState('unauthenticated');
@@ -60,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Listen to teacher profile doc — create if missing
       const teacherRef = doc(db, 'teachers', firebaseUser.uid);
-      const unsubTeacher = onSnapshot(
+      unsubTeacher = onSnapshot(
         teacherRef,
         async (snap) => {
           if (snap.exists()) {
@@ -89,14 +97,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthState('authenticated');
         },
         () => {
-          setAuthState('authenticated');
+          // Only set authenticated on error if user is still signed in
+          if (auth.currentUser) {
+            setAuthState('authenticated');
+          }
         }
       );
-
-      return () => unsubTeacher();
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      if (unsubTeacher) unsubTeacher();
+    };
   }, []);
 
   const isAdmin = teacher?.isAdmin ?? false;

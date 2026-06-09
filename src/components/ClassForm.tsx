@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   collection,
   doc,
+  setDoc,
   writeBatch,
   updateDoc,
   serverTimestamp,
@@ -605,7 +606,6 @@ export default function ClassFormLegacy({ onCreated, onCancel }: LegacyClassForm
 
     setLoading(true);
     try {
-      const batch = writeBatch(db);
       const classRef = doc(collection(db, 'classes'));
 
       // Parse names into first/last and generate display names
@@ -622,7 +622,10 @@ export default function ClassFormLegacy({ onCreated, onCancel }: LegacyClassForm
 
       const displayNames = generateDisplayNames(parsed);
 
-      batch.set(classRef, {
+      // Create the class document first — Firestore security rules for the
+      // students subcollection use get() on the parent class doc, which must
+      // already exist before students can be written.
+      await setDoc(classRef, {
         teacherId: user.uid,
         className: trimmedName,
         name: trimmedName,
@@ -634,6 +637,7 @@ export default function ClassFormLegacy({ onCreated, onCancel }: LegacyClassForm
       });
 
       // Create student sub-documents with proper schema
+      const batch = writeBatch(db);
       for (let i = 0; i < parsed.length; i++) {
         const studentRef = doc(collection(db, 'classes', classRef.id, 'students'));
         batch.set(studentRef, {

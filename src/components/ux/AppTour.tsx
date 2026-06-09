@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, useEffect, useState } from 'react';
-import Joyride, { type Step, type CallBackProps, STATUS, EVENTS } from 'react-joyride';
+import { Joyride, type Step, type CallBackProps } from 'react-joyride';
 
 // ---------------------------------------------------------------------------
 // Tour steps
@@ -143,9 +143,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   function handleCallback(data: CallBackProps) {
     const { status, type } = data;
     if (
-      status === STATUS.FINISHED ||
-      status === STATUS.SKIPPED ||
-      type === EVENTS.TOUR_END
+      status === 'finished' ||
+      status === 'skipped' ||
+      type === 'tour:end'
     ) {
       setRun(false);
       localStorage.setItem(STORAGE_KEY, 'true');

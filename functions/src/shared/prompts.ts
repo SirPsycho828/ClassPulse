@@ -556,3 +556,61 @@ CONSTRAINTS:
 - Do not include numeric statistics in oneSentence or misconception text — the frontend displays the computed numbers separately.
 - gapAreas arrays must contain only skillTags that appear in the skill data above. Students with 100% total score must have empty gapAreas.`;
 }
+
+// ---------------------------------------------------------------------------
+// Answer key extraction prompt
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the messages array for extracting correct answers from a
+ * photographed answer key. The caller appends the image content part
+ * to the user message before sending to OpenRouter.
+ *
+ * @param questionCount  Number of questions the teacher specified in Step 2
+ */
+export function buildAnswerKeyExtractionPrompt(questionCount: number): ChatMessage[] {
+  const systemPrompt = `You are an expert at reading scanned or photographed answer keys for student assignments. Your job is to accurately extract the correct answer for each question from an image of a completed answer key.
+
+IMPORTANT RULES:
+- Return ONLY valid JSON. No prose, no explanation outside the JSON.
+- All confidence values must be decimals between 0 and 1.
+- Never invent answers. Only extract what is visibly written on the paper.
+- If a question's answer is not visible or illegible, still include it with an empty correctAnswer and low confidence.
+
+CONFIDENCE CALIBRATION:
+- 1.0: Printed text, clearly legible, zero ambiguity
+- 0.8-0.9: Clear handwriting, high confidence in reading
+- 0.6-0.8: Somewhat legible, reasonable interpretation
+- 0.4-0.6: Difficult to read, multiple interpretations possible
+- Below 0.4: Essentially guessing
+
+WHAT TO EXTRACT:
+- The correct answer for each question (letter choice, word, number, or short phrase)
+- Question text if visible (the actual question being asked)
+- Answer choices if visible (e.g., A, B, C, D options)
+- This is an ANSWER KEY — every answer shown is the CORRECT answer`;
+
+  const userText = `This image shows a completed answer key for an assignment with ${questionCount} questions. Extract the correct answer for each question.
+
+If question text or answer choices are visible on the page, include those too. If only the answers are visible (e.g., a list of letters like "1. A, 2. C, 3. B"), that is fine — extract what you can see.
+
+Return JSON matching this exact structure:
+{
+  "questions": [
+    {
+      "questionNumber": 1,
+      "correctAnswer": "the correct answer as written",
+      "confidence": 0.95,
+      "questionText": "the question text if visible, or null",
+      "answerChoices": ["A option", "B option", "C option", "D option"] or null
+    }
+  ]
+}
+
+Extract exactly ${questionCount} questions, numbered 1 through ${questionCount}. If a question is not visible on the page, include it with an empty correctAnswer string and confidence 0.0.`;
+
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userText },
+  ];
+}

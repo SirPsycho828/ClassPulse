@@ -633,7 +633,7 @@ export default function SetupWizard() {
       correctAnswer: answerKeyRows[i]?.correctAnswer ?? '',
       questionText: answerKeyRows[i]?.questionText ?? '',
       answerChoices: answerKeyRows[i]?.answerChoices ?? '',
-      points: answerKeyRows[i]?.points ?? parseFloat(perQ.toFixed(2)),
+      points: parseFloat(perQ.toFixed(2)),
       extraCredit: answerKeyRows[i]?.extraCredit ?? false,
     }));
 

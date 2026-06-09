@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   collection,
@@ -8,11 +8,13 @@ import {
   addDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, storage, functions } from '@/lib/firebase';
+import { ref, uploadBytesResumable } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import ClassForm from '@/components/ClassForm';
-import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle, Upload } from 'lucide-react';
 import type { AnswerKey, AnswerKeyQuestion } from '@/lib/schemas';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ interface ClassOption {
 
 type AssignmentType = 'scored' | 'objective';
 type UploadMode = 'image' | 'csv';
+type AnswerKeyEntryMode = 'type' | 'photo';
 
 interface AnswerKeyRow {
   questionNumber: number;
@@ -407,127 +410,306 @@ function StepAnswerKey({
   rows,
   setRows,
   totalPoints,
+  entryMode,
+  setEntryMode,
+  photoFile,
+  photoPreviewUrl,
+  photoUploadProgress,
+  photoExtracting,
+  photoError,
+  photoExtractedRows,
+  setPhotoExtractedRows,
+  photoConfidences,
+  onPhotoUpload,
+  onPhotoReset,
+  fileInputRef,
 }: {
   rows: AnswerKeyRow[];
   setRows: (rows: AnswerKeyRow[]) => void;
   totalPoints: number;
+  entryMode: AnswerKeyEntryMode;
+  setEntryMode: (mode: AnswerKeyEntryMode) => void;
+  photoFile: File | null;
+  photoPreviewUrl: string | null;
+  photoUploadProgress: number | null;
+  photoExtracting: boolean;
+  photoError: string | null;
+  photoExtractedRows: AnswerKeyRow[];
+  setPhotoExtractedRows: (rows: AnswerKeyRow[]) => void;
+  photoConfidences: number[];
+  onPhotoUpload: (file: File) => void;
+  onPhotoReset: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const activeRows = entryMode === 'photo' ? photoExtractedRows : rows;
+  const setActiveRows = entryMode === 'photo' ? setPhotoExtractedRows : setRows;
 
   function updateRow(index: number, partial: Partial<AnswerKeyRow>) {
-    setRows(rows.map((r, i) => (i === index ? { ...r, ...partial } : r)));
+    setActiveRows(activeRows.map((r, i) => (i === index ? { ...r, ...partial } : r)));
   }
 
-  const allValid = rows.every((r) => r.correctAnswer.trim() !== '');
+  const allValid = activeRows.length > 0 && activeRows.every((r) => r.correctAnswer.trim() !== '');
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) onPhotoUpload(file);
+  }
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) onPhotoUpload(file);
+  }
+
+  const showTable = entryMode === 'type' || photoExtractedRows.length > 0;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-lg font-semibold text-foreground">Answer Key</h2>
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="text-sm text-primary hover:text-primary font-medium"
-        >
-          {expanded ? 'Quick entry mode' : 'Add question details'}
-        </button>
+        {showTable && (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="text-sm text-primary hover:text-primary font-medium"
+          >
+            {expanded ? 'Quick entry mode' : 'Add question details'}
+          </button>
+        )}
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Enter the correct answer for each question. Points default to{' '}
-        {(totalPoints / rows.length).toFixed(1)} per question.
-      </p>
+      {/* Entry mode toggle */}
+      <SegmentedToggle<AnswerKeyEntryMode>
+        options={[
+          { value: 'type', label: 'Type Answers' },
+          { value: 'photo', label: 'Upload Photo' },
+        ]}
+        value={entryMode}
+        onChange={setEntryMode}
+      />
 
-      {/* Table */}
-      <div className="overflow-x-auto border border-border rounded-[--radius-md]">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 border-b border-border">
-            <tr>
-              <th className="px-3 py-2 text-left text-muted-foreground font-medium w-12">#</th>
-              <th className="px-3 py-2 text-left text-muted-foreground font-medium">
-                Correct Answer <span className="text-destructive">*</span>
-              </th>
-              {expanded && (
-                <>
-                  <th className="px-3 py-2 text-left text-muted-foreground font-medium">
-                    Question Text
-                  </th>
-                  <th className="px-3 py-2 text-left text-muted-foreground font-medium">
-                    Answer Choices
-                  </th>
-                </>
-              )}
-              <th className="px-3 py-2 text-left text-muted-foreground font-medium w-20">Pts</th>
-              <th className="px-3 py-2 text-center text-muted-foreground font-medium w-16">EC</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={row.questionNumber} className="border-b border-border/50 last:border-0">
-                <td className="px-3 py-1.5 text-muted-foreground font-medium">
-                  {row.questionNumber}
-                </td>
-                <td className="px-3 py-1.5">
-                  <input
-                    type="text"
-                    required
-                    value={row.correctAnswer}
-                    onChange={(e) => updateRow(i, { correctAnswer: e.target.value })}
-                    placeholder="Answer"
-                    className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                  />
-                </td>
-                {expanded && (
-                  <>
-                    <td className="px-3 py-1.5">
-                      <input
-                        type="text"
-                        value={row.questionText}
-                        onChange={(e) => updateRow(i, { questionText: e.target.value })}
-                        placeholder="Optional"
-                        className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                      />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <input
-                        type="text"
-                        value={row.answerChoices}
-                        onChange={(e) => updateRow(i, { answerChoices: e.target.value })}
-                        placeholder="A, B, C, D"
-                        className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                      />
-                    </td>
-                  </>
-                )}
-                <td className="px-3 py-1.5">
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={row.points}
-                    onChange={(e) => updateRow(i, { points: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-                  />
-                </td>
-                <td className="px-3 py-1.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={row.extraCredit}
-                    onChange={(e) => updateRow(i, { extraCredit: e.target.checked })}
-                    className="w-4 h-4 text-primary rounded-[--radius-sm] border-input focus:ring-ring"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Photo upload mode */}
+      {entryMode === 'photo' && !photoExtractedRows.length && (
+        <div className="space-y-3">
+          {photoUploadProgress !== null ? (
+            <div className="flex flex-col items-center gap-2 py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Uploading... {photoUploadProgress}%</p>
+            </div>
+          ) : photoExtracting ? (
+            <div className="flex flex-col items-center gap-2 py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Extracting answers...</p>
+            </div>
+          ) : (
+            <>
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-3 py-10 px-4 border-2 border-dashed rounded-[--radius-md] cursor-pointer transition-colors ${
+                  dragOver
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:border-primary/50 hover:bg-muted/30'
+                }`}
+              >
+                <Upload className="w-8 h-8 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Drop your answer key photo here
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    or click to browse — JPEG, PNG, HEIC, WebP (max 10 MB)
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/heic,image/webp"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+              </div>
 
-      {!allValid && (
-        <div className="flex items-center gap-2 text-sm text-warning">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          All questions must have a correct answer.
+              <p className="text-xs text-muted-foreground">
+                Fill out a blank copy of the assignment with the correct answers, then photograph or
+                scan it. The AI will extract the answers for you to review.
+              </p>
+            </>
+          )}
+
+          {photoError && (
+            <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-[--radius-md]">
+              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive flex-1">{photoError}</p>
+              <button
+                type="button"
+                onClick={onPhotoReset}
+                className="text-sm text-primary hover:text-primary font-medium whitespace-nowrap"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Photo preview thumbnail */}
+      {entryMode === 'photo' && photoPreviewUrl && photoExtractedRows.length > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-[--radius-md] border border-border">
+          <img
+            src={photoPreviewUrl}
+            alt="Answer key"
+            className="w-16 h-16 object-cover rounded-[--radius-sm] border border-border"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">
+              {photoFile?.name || 'Answer key photo'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Review the extracted answers below. Edit any that look incorrect.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onPhotoReset}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Re-upload
+          </button>
+        </div>
+      )}
+
+      {/* Answer table */}
+      {showTable && (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {entryMode === 'photo'
+              ? 'Review the extracted answers. Edit any that look incorrect.'
+              : `Enter the correct answer for each question. Points default to ${(totalPoints / activeRows.length).toFixed(1)} per question.`}
+          </p>
+
+          <div className="overflow-x-auto border border-border rounded-[--radius-md]">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b border-border">
+                <tr>
+                  <th className="px-3 py-2 text-left text-muted-foreground font-medium w-12">#</th>
+                  <th className="px-3 py-2 text-left text-muted-foreground font-medium">
+                    Correct Answer <span className="text-destructive">*</span>
+                  </th>
+                  {expanded && (
+                    <>
+                      <th className="px-3 py-2 text-left text-muted-foreground font-medium">
+                        Question Text
+                      </th>
+                      <th className="px-3 py-2 text-left text-muted-foreground font-medium">
+                        Answer Choices
+                      </th>
+                    </>
+                  )}
+                  <th className="px-3 py-2 text-left text-muted-foreground font-medium w-20">
+                    Pts
+                  </th>
+                  <th className="px-3 py-2 text-center text-muted-foreground font-medium w-16">
+                    EC
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeRows.map((row, i) => {
+                  const lowConfidence =
+                    entryMode === 'photo' && photoConfidences[i] !== undefined && photoConfidences[i] < 0.7;
+                  return (
+                    <tr
+                      key={row.questionNumber}
+                      className={`border-b border-border/50 last:border-0 ${lowConfidence ? 'bg-warning/5' : ''}`}
+                    >
+                      <td className="px-3 py-1.5 text-muted-foreground font-medium">
+                        {row.questionNumber}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="text"
+                          required
+                          value={row.correctAnswer}
+                          onChange={(e) => updateRow(i, { correctAnswer: e.target.value })}
+                          placeholder="Answer"
+                          className={`w-full px-2 py-1 border rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${
+                            lowConfidence ? 'border-warning' : 'border-input'
+                          }`}
+                        />
+                      </td>
+                      {expanded && (
+                        <>
+                          <td className="px-3 py-1.5">
+                            <input
+                              type="text"
+                              value={row.questionText}
+                              onChange={(e) => updateRow(i, { questionText: e.target.value })}
+                              placeholder="Optional"
+                              className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input
+                              type="text"
+                              value={row.answerChoices}
+                              onChange={(e) => updateRow(i, { answerChoices: e.target.value })}
+                              placeholder="A, B, C, D"
+                              className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                            />
+                          </td>
+                        </>
+                      )}
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={row.points}
+                          onChange={(e) =>
+                            updateRow(i, { points: parseFloat(e.target.value) || 0 })
+                          }
+                          className="w-full px-2 py-1 border border-input rounded-[--radius-sm] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={row.extraCredit}
+                          onChange={(e) => updateRow(i, { extraCredit: e.target.checked })}
+                          className="w-4 h-4 text-primary rounded-[--radius-sm] border-input focus:ring-ring"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {!allValid && (
+            <div className="flex items-center gap-2 text-sm text-warning">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              All questions must have a correct answer.
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -560,6 +742,16 @@ export default function SetupWizard() {
 
   // Step 3 state
   const [answerKeyRows, setAnswerKeyRows] = useState<AnswerKeyRow[]>([]);
+
+  // Step 3 — photo upload state
+  const [answerKeyEntryMode, setAnswerKeyEntryMode] = useState<AnswerKeyEntryMode>('type');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState<number | null>(null);
+  const [photoExtracting, setPhotoExtracting] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoExtractedRows, setPhotoExtractedRows] = useState<AnswerKeyRow[]>([]);
+  const [photoConfidences, setPhotoConfidences] = useState<number[]>([]);
 
   // Creating assignment
   const [creating, setCreating] = useState(false);
@@ -643,6 +835,103 @@ export default function SetupWizard() {
   }, [questionCount, totalPoints]);
 
   // ---------------------------------------------------------------------------
+  // Answer key photo upload + extraction
+  // ---------------------------------------------------------------------------
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAnswerKeyPhotoUpload = useCallback(
+    async (file: File) => {
+      if (!user) return;
+
+      // Validate file
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setPhotoError('Please upload a JPEG, PNG, HEIC, or WebP image.');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setPhotoError('Image must be under 10 MB.');
+        return;
+      }
+
+      setPhotoFile(file);
+      setPhotoError(null);
+      setPhotoPreviewUrl(URL.createObjectURL(file));
+
+      // Upload to Firebase Storage
+      const timestamp = Date.now();
+      const storagePath = `uploads/${user.uid}/answerkeys/${timestamp}_${file.name}`;
+      const storageRef = ref(storage, storagePath);
+
+      try {
+        // Upload with progress
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              setPhotoUploadProgress(
+                Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100),
+              );
+            },
+            (error) => reject(error),
+            () => resolve(),
+          );
+        });
+
+        setPhotoUploadProgress(null);
+        setPhotoExtracting(true);
+
+        // Call extractAnswerKey Cloud Function
+        const extractFn = httpsCallable<
+          { questionCount: number; imageUrl: string },
+          { questions: Array<{ questionNumber: number; correctAnswer: string; confidence: number; questionText: string | null; answerChoices: string[] | null }> }
+        >(functions, 'extractAnswerKey');
+
+        const count = parseInt(questionCount, 10);
+        const result = await extractFn({ questionCount: count, imageUrl: storagePath });
+
+        // Convert extracted questions to AnswerKeyRow format
+        const pts = parseFloat(totalPoints) || count;
+        const perQ = pts / count;
+
+        const rows: AnswerKeyRow[] = result.data.questions.map((q) => ({
+          questionNumber: q.questionNumber,
+          correctAnswer: q.correctAnswer,
+          questionText: q.questionText || '',
+          answerChoices: q.answerChoices ? q.answerChoices.join(', ') : '',
+          points: parseFloat(perQ.toFixed(2)),
+          extraCredit: false,
+        }));
+
+        const confidences = result.data.questions.map((q) => q.confidence);
+
+        setPhotoExtractedRows(rows);
+        setPhotoConfidences(confidences);
+        setPhotoExtracting(false);
+      } catch (err) {
+        console.error('[answerKeyPhotoUpload] Error:', err);
+        setPhotoError('Failed to extract answers. Please try again or type answers manually.');
+        setPhotoExtracting(false);
+        setPhotoUploadProgress(null);
+      }
+    },
+    [user, questionCount, totalPoints],
+  );
+
+  const handlePhotoReset = useCallback(() => {
+    setPhotoFile(null);
+    setPhotoPreviewUrl(null);
+    setPhotoUploadProgress(null);
+    setPhotoExtracting(false);
+    setPhotoError(null);
+    setPhotoExtractedRows([]);
+    setPhotoConfidences([]);
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Validation helpers
   // ---------------------------------------------------------------------------
 
@@ -656,10 +945,16 @@ export default function SetupWizard() {
     return true;
   }, [title, isPathB, totalPoints, questionCount]);
 
-  const canAdvanceStep3 = useMemo(
-    () => answerKeyRows.length > 0 && answerKeyRows.every((r) => r.correctAnswer.trim() !== ''),
-    [answerKeyRows],
-  );
+  const canAdvanceStep3 = useMemo(() => {
+    if (answerKeyEntryMode === 'type') {
+      return answerKeyRows.length > 0 && answerKeyRows.every((r) => r.correctAnswer.trim() !== '');
+    }
+    // Photo mode: extracted rows must be populated and all have answers
+    return (
+      photoExtractedRows.length > 0 &&
+      photoExtractedRows.every((r) => r.correctAnswer.trim() !== '')
+    );
+  }, [answerKeyEntryMode, answerKeyRows, photoExtractedRows]);
 
   // ---------------------------------------------------------------------------
   // Create assignment document
@@ -671,7 +966,10 @@ export default function SetupWizard() {
     // Build answer key for Path B
     let answerKey: AnswerKey | null = null;
     if (isPathB) {
-      const questions: AnswerKeyQuestion[] = answerKeyRows.map((r) => ({
+      const activeRows = answerKeyEntryMode === 'photo' ? photoExtractedRows : answerKeyRows;
+      const source = answerKeyEntryMode === 'photo' ? 'image' : 'manual';
+
+      const questions: AnswerKeyQuestion[] = activeRows.map((r) => ({
         questionNumber: r.questionNumber,
         correctAnswer: r.correctAnswer.trim(),
         questionText: r.questionText.trim() || null,
@@ -681,7 +979,7 @@ export default function SetupWizard() {
         points: r.points,
         extraCredit: r.extraCredit,
       }));
-      answerKey = { source: 'manual', questions };
+      answerKey = { source, questions };
     }
 
     const doc = {
@@ -805,6 +1103,19 @@ export default function SetupWizard() {
             rows={answerKeyRows}
             setRows={setAnswerKeyRows}
             totalPoints={parseFloat(totalPoints) || 0}
+            entryMode={answerKeyEntryMode}
+            setEntryMode={setAnswerKeyEntryMode}
+            photoFile={photoFile}
+            photoPreviewUrl={photoPreviewUrl}
+            photoUploadProgress={photoUploadProgress}
+            photoExtracting={photoExtracting}
+            photoError={photoError}
+            photoExtractedRows={photoExtractedRows}
+            setPhotoExtractedRows={setPhotoExtractedRows}
+            photoConfidences={photoConfidences}
+            onPhotoUpload={handleAnswerKeyPhotoUpload}
+            onPhotoReset={handlePhotoReset}
+            fileInputRef={fileInputRef}
           />
         )}
 

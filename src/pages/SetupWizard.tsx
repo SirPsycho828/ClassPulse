@@ -540,7 +540,7 @@ function StepAnswerKey({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/heic,image/webp"
+                  accept="image/*"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -911,9 +911,13 @@ export default function SetupWizard() {
         setPhotoExtractedRows(rows);
         setPhotoConfidences(confidences);
         setPhotoExtracting(false);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('[answerKeyPhotoUpload] Error:', err);
-        setPhotoError('Failed to extract answers. Please try again or type answers manually.');
+        const message =
+          err instanceof Error && 'code' in err
+            ? `Extraction failed: ${(err as Error & { code: string }).code.replace('functions/', '')}. Check Cloud Function logs.`
+            : 'Failed to extract answers. Please try again or type answers manually.';
+        setPhotoError(message);
         setPhotoExtracting(false);
         setPhotoUploadProgress(null);
       }

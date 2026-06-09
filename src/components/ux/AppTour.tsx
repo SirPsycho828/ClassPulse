@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback, useEffect, useState } from 'react';
-import { Joyride, type Step, type CallBackProps } from 'react-joyride';
+import { Joyride, STATUS, type Step, type TooltipRenderProps, type EventData } from 'react-joyride';
 
 // ---------------------------------------------------------------------------
 // Tour steps
@@ -12,28 +12,28 @@ const TOUR_STEPS: Step[] = [
     title: 'Welcome to ClassPulse!',
     content:
       'Let\u2019s take a quick tour so you know where everything is. This takes about 30 seconds.',
-    disableBeacon: true,
+    skipBeacon: true,
   },
   {
     target: '[data-tour="new-analysis"]',
     title: 'Analyze Student Work',
     content:
       'Click here to start a new analysis. Upload photos of student papers or a CSV of scores \u2014 ClassPulse will handle the rest.',
-    disableBeacon: true,
+    skipBeacon: true,
   },
   {
     target: '[data-tour="nav-tabs"]',
     title: 'Navigate the App',
     content:
       'Use these tabs to switch between your Dashboard and other sections.',
-    disableBeacon: true,
+    skipBeacon: true,
   },
   {
     target: '[data-tour="settings-gear"]',
     title: 'Your Settings',
     content:
       'Update your name, school info, and profile photo here. You can also replay this tour from the Settings page.',
-    disableBeacon: true,
+    skipBeacon: true,
   },
 ];
 
@@ -52,16 +52,7 @@ function TourTooltip({
   skipProps,
   tooltipProps,
   isLastStep,
-}: CallBackProps & {
-  continuous: boolean;
-  index: number;
-  step: Step;
-  backProps: Record<string, unknown>;
-  primaryProps: Record<string, unknown>;
-  skipProps: Record<string, unknown>;
-  tooltipProps: Record<string, unknown>;
-  isLastStep: boolean;
-}) {
+}: TooltipRenderProps) {
   return (
     <div
       {...tooltipProps}
@@ -140,12 +131,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setRun(true);
   }, []);
 
-  function handleCallback(data: CallBackProps) {
-    const { status, type } = data;
+  function handleEvent(data: EventData) {
     if (
-      status === 'finished' ||
-      status === 'skipped' ||
-      type === 'tour:end'
+      data.status === STATUS.FINISHED ||
+      data.status === STATUS.SKIPPED
     ) {
       setRun(false);
       localStorage.setItem(STORAGE_KEY, 'true');
@@ -159,16 +148,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         steps={TOUR_STEPS}
         run={run}
         continuous
-        showSkipButton
-        disableOverlayClose
-        spotlightClicks
-        callback={handleCallback}
-        tooltipComponent={TourTooltip as never}
-        styles={{
-          options: {
-            zIndex: 10000,
-            overlayColor: 'rgba(0, 0, 0, 0.4)',
-          },
+        onEvent={handleEvent}
+        tooltipComponent={TourTooltip}
+        options={{
+          buttons: ['back', 'close', 'primary', 'skip'],
+          overlayClickAction: false,
+          zIndex: 10000,
+          overlayColor: 'rgba(0, 0, 0, 0.4)',
         }}
       />
     </TourContext.Provider>

@@ -455,9 +455,6 @@ export default function Dashboard() {
   const needsReviewCount = assignments.filter(
     (a) => a.status === 'needs_review' || a.status === 'reviewing',
   ).length;
-  const processingCount = assignments.filter(
-    (a) => a.status === 'uploading' || a.status === 'extracting' || a.status === 'analyzing',
-  ).length;
 
   // Redirect first-time users to onboarding
   if (classesLoaded && classes.length === 0) {

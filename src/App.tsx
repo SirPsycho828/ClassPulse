@@ -20,6 +20,7 @@ import InterventionPlanner from '@/pages/InterventionPlanner';
 import AdminModels from '@/pages/AdminModels';
 import Settings from '@/pages/Settings';
 import Onboarding from '@/pages/Onboarding';
+import NerdyPresentation from '@/pages/NerdyPresentation';
 
 function LandingRoute() {
   const { authState } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/sign-in" element={<PublicRoute><SignIn /></PublicRoute>} />
             <Route path="/sign-up" element={<PublicRoute><SignUp /></PublicRoute>} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/nerdy" element={<NerdyPresentation />} />
 
             {/* Onboarding — protected but no AppLayout */}
             <Route path="/onboarding" element={<PrivateRoute><Onboarding /></PrivateRoute>} />

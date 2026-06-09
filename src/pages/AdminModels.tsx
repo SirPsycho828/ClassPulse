@@ -507,7 +507,6 @@ export default function AdminModels() {
                   <th className="px-4 py-2.5 w-8"></th>
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">ID</th>
-                  <th className="px-4 py-2.5">Provider</th>
                   <th className="px-4 py-2.5 text-right">Context</th>
                   <th className="px-4 py-2.5 text-center">Vision</th>
                   <th className="px-4 py-2.5 text-right">Prompt</th>
@@ -544,7 +543,6 @@ export default function AdminModels() {
                     <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">
                       {model.id}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{model.provider || ''}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">
                       {model.contextLength ? formatContextWindow(model.contextLength) : '—'}
                     </td>

@@ -1012,7 +1012,7 @@ export const runAnalysis = onCall(
 // Admin Functions
 // ---------------------------------------------------------------------------
 
-export const fetchAvailableModels = onCall(async (request) => {
+export const fetchAvailableModels = onCall({ secrets: ['OPENROUTER_API_KEY'] }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
   // Check if cached list is fresh (< 24h)

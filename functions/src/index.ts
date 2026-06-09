@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import { callOpenRouter } from './shared/openrouter';
 import {
   buildExtractionPrompt,
+  buildAnswerKeyExtractionPrompt,
   buildSkillInferencePrompt,
   buildAnalysisPrompt,
   type AssignmentType,
@@ -235,6 +236,93 @@ function clampConfidence(val: unknown): number {
   if (val > 1) return val / 100; // Handle 95 → 0.95
   return Math.max(0, Math.min(1, val));
 }
+
+// ---------------------------------------------------------------------------
+// extractAnswerKey — Vision AI extraction from answer key photo
+// ---------------------------------------------------------------------------
+
+export const extractAnswerKey = onCall(
+  { timeoutSeconds: 300, secrets: ['OPENROUTER_API_KEY'] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const { questionCount, imageUrl } = request.data as {
+      questionCount: number;
+      imageUrl: string;
+    };
+
+    if (!questionCount || questionCount <= 0) {
+      throw new HttpsError('invalid-argument', 'questionCount must be a positive integer');
+    }
+    if (!imageUrl) {
+      throw new HttpsError('invalid-argument', 'imageUrl is required');
+    }
+
+    // Verify caller is a teacher
+    const teacherDoc = await db.collection('teachers').doc(request.auth.uid).get();
+    if (!teacherDoc.exists) {
+      throw new HttpsError('permission-denied', 'Teacher profile not found');
+    }
+
+    try {
+      // Download image from Storage
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(imageUrl);
+      const [buffer] = await file.download();
+      const base64 = buffer.toString('base64');
+      const [metadata] = await file.getMetadata();
+      const contentType = (metadata.contentType as string) || 'image/jpeg';
+
+      // Build prompt
+      const promptMessages = buildAnswerKeyExtractionPrompt(questionCount);
+      const userMessage = promptMessages.find((m) => m.role === 'user');
+      const systemMessage = promptMessages.find((m) => m.role === 'system');
+
+      const messages: Array<{ role: string; content: string | Array<unknown> }> = [];
+      if (systemMessage) {
+        messages.push({ role: 'system', content: systemMessage.content as string });
+      }
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: (userMessage?.content as string) || '' },
+          {
+            type: 'image_url',
+            image_url: { url: `data:${contentType};base64,${base64}` },
+          },
+        ],
+      });
+
+      // Call OpenRouter with the extraction model (vision-capable)
+      const response = await callOpenRouter('extraction', messages);
+
+      // Parse response
+      let parsed;
+      try {
+        parsed = JSON.parse(response.content);
+      } catch {
+        throw new HttpsError('internal', 'Failed to parse answer key extraction response');
+      }
+
+      // Normalize the extracted questions
+      const questions = (parsed.questions || []).map(
+        (q: Record<string, unknown>, i: number) => ({
+          questionNumber: (q.questionNumber as number) || i + 1,
+          correctAnswer: ((q.correctAnswer as string) || '').trim(),
+          confidence: clampConfidence(q.confidence as number),
+          questionText: (q.questionText as string) || null,
+          answerChoices: Array.isArray(q.answerChoices) ? q.answerChoices : null,
+        }),
+      );
+
+      return { questions };
+    } catch (err: unknown) {
+      if (err instanceof HttpsError) throw err;
+      console.error('[extractAnswerKey] Error:', err);
+      throw new HttpsError('internal', 'Answer key extraction failed');
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // runCsvExtraction — CSV data (no AI call)

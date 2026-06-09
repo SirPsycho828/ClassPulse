@@ -335,7 +335,7 @@ export default function AdminModels() {
                     {model?.name ?? assignment.currentModel}
                   </div>
                   {model && (
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
                       <span className="text-xs text-muted-foreground">{model.provider || ''}</span>
                       {model.contextLength && (
                         <>
@@ -343,6 +343,20 @@ export default function AdminModels() {
                           <span className="text-xs text-muted-foreground">
                             {formatContextWindow(model.contextLength)} ctx
                           </span>
+                        </>
+                      )}
+                      {model.pricing && (model.pricing.prompt > 0 || model.pricing.completion > 0) && (
+                        <>
+                          <span className="text-xs text-border">|</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatPrice(model.pricing.prompt)} / {formatPrice(model.pricing.completion)} per 1M
+                          </span>
+                        </>
+                      )}
+                      {model.pricing && model.pricing.prompt === 0 && model.pricing.completion === 0 && (
+                        <>
+                          <span className="text-xs text-border">|</span>
+                          <span className="text-xs text-success font-medium">Free</span>
                         </>
                       )}
                       {model.vision && (

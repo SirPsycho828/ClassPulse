@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LogOut, Menu, Settings, X } from 'lucide-react';
 
 export function Navbar() {
-  const { teacher, isAdmin } = useAuth();
+  const { user, teacher, isAdmin } = useAuth();
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -78,8 +78,8 @@ export function Navbar() {
           {/* Desktop user area */}
           <div className="hidden sm:flex items-center gap-3">
             <Link to="/settings" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-              {teacher?.photoURL ? (
-                <img src={teacher.photoURL} alt="" className="w-8 h-8 rounded-full object-cover border border-border" />
+              {(teacher?.photoURL || user?.photoURL) ? (
+                <img src={(teacher?.photoURL || user?.photoURL)!} alt="" className="w-8 h-8 rounded-full object-cover border border-border" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold">
                   {initials}
@@ -141,8 +141,8 @@ export function Navbar() {
 
             <div className="mt-auto pt-4 border-t border-border">
               <div className="flex items-center gap-3 px-4 py-3">
-                {teacher?.photoURL ? (
-                  <img src={teacher.photoURL} alt="" className="w-9 h-9 rounded-full object-cover border border-border" />
+                {(teacher?.photoURL || user?.photoURL) ? (
+                  <img src={(teacher?.photoURL || user?.photoURL)!} alt="" className="w-9 h-9 rounded-full object-cover border border-border" />
                 ) : (
                   <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
                     {initials}

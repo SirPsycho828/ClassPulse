@@ -1012,87 +1012,98 @@ export const runAnalysis = onCall(
 // Admin Functions
 // ---------------------------------------------------------------------------
 
-export const fetchAvailableModels = onCall({ secrets: ['OPENROUTER_API_KEY'] }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
+export const fetchAvailableModels = onCall(
+  { secrets: ['OPENROUTER_API_KEY'], serviceAccount: 'classpulse-edu@appspot.gserviceaccount.com' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
-  // Check if cached list is fresh (< 24h)
-  const configDoc = await db.collection('config').doc('openrouter').get();
-  const configData = configDoc.data();
-  const lastFetched = configData?.lastFetched?.toDate?.();
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Try to read Firestore cache (gracefully skip on permission errors)
+    let configData: FirebaseFirestore.DocumentData | undefined;
+    try {
+      const configDoc = await db.collection('config').doc('openrouter').get();
+      configData = configDoc.data();
+      const lastFetched = configData?.lastFetched?.toDate?.();
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  if (lastFetched && lastFetched > oneDayAgo && configData?.cachedModelList) {
-    return { models: configData.cachedModelList, cached: true };
-  }
+      if (lastFetched && lastFetched > oneDayAgo && configData?.cachedModelList) {
+        return { models: configData.cachedModelList, cached: true };
+      }
+    } catch (cacheErr) {
+      console.warn('[fetchAvailableModels] Could not read Firestore cache:', cacheErr);
+    }
 
-  // Fetch from OpenRouter
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new HttpsError('internal', 'OpenRouter API key not configured');
+    // Fetch from OpenRouter
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new HttpsError('internal', 'OpenRouter API key not configured');
 
-  try {
-    const response = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
 
-    if (!response.ok) {
-      // Return stale cache if available
+      if (!response.ok) {
+        if (configData?.cachedModelList) {
+          return { models: configData.cachedModelList, cached: true, stale: true };
+        }
+        throw new HttpsError('internal', 'Failed to fetch models from OpenRouter');
+      }
+
+      const data = (await response.json()) as {
+        data: Array<{
+          id: string;
+          name: string;
+          context_length: number;
+          pricing: { prompt: string; completion: string };
+          architecture?: { modality?: string };
+        }>;
+      };
+      const models = (data.data || []).map(
+        (m: {
+          id: string;
+          name: string;
+          context_length: number;
+          pricing: { prompt: string; completion: string };
+          architecture?: { modality?: string };
+        }) => ({
+          id: m.id,
+          name: m.name,
+          contextLength: m.context_length,
+          pricing: {
+            prompt: parseFloat(m.pricing?.prompt || '0') * 1000000,
+            completion: parseFloat(m.pricing?.completion || '0') * 1000000,
+          },
+          vision:
+            m.architecture?.modality === 'multimodal' ||
+            m.id.includes('vision') ||
+            m.id.includes('gemini'),
+        }),
+      );
+
+      // Cache in Firestore (best-effort)
+      try {
+        await db.collection('config').doc('openrouter').set(
+          {
+            cachedModelList: models,
+            lastFetched: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (writeErr) {
+        console.warn('[fetchAvailableModels] Could not write Firestore cache:', writeErr);
+      }
+
+      return { models, cached: false };
+    } catch (err: unknown) {
       if (configData?.cachedModelList) {
         return { models: configData.cachedModelList, cached: true, stale: true };
       }
-      throw new HttpsError('internal', 'Failed to fetch models from OpenRouter');
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError('internal', 'Failed to fetch models');
     }
+  },
+);
 
-    const data = (await response.json()) as {
-      data: Array<{
-        id: string;
-        name: string;
-        context_length: number;
-        pricing: { prompt: string; completion: string };
-        architecture?: { modality?: string };
-      }>;
-    };
-    const models = (data.data || []).map(
-      (m: {
-        id: string;
-        name: string;
-        context_length: number;
-        pricing: { prompt: string; completion: string };
-        architecture?: { modality?: string };
-      }) => ({
-        id: m.id,
-        name: m.name,
-        contextLength: m.context_length,
-        pricing: {
-          prompt: parseFloat(m.pricing?.prompt || '0'),
-          completion: parseFloat(m.pricing?.completion || '0'),
-        },
-        vision:
-          m.architecture?.modality === 'multimodal' ||
-          m.id.includes('vision') ||
-          m.id.includes('gemini'),
-      }),
-    );
-
-    // Cache in Firestore
-    await db.collection('config').doc('openrouter').set(
-      {
-        cachedModelList: models,
-        lastFetched: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    return { models, cached: false };
-  } catch (err: unknown) {
-    if (configData?.cachedModelList) {
-      return { models: configData.cachedModelList, cached: true, stale: true };
-    }
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError('internal', 'Failed to fetch models');
-  }
-});
-
-export const updateModelConfig = onCall(async (request) => {
+export const updateModelConfig = onCall({ serviceAccount: 'classpulse-edu@appspot.gserviceaccount.com' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
 
   const teacherDoc = await db.collection('teachers').doc(request.auth.uid).get();

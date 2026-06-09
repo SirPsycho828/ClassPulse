@@ -913,10 +913,36 @@ export default function SetupWizard() {
         setPhotoExtracting(false);
       } catch (err: unknown) {
         console.error('[answerKeyPhotoUpload] Error:', err);
-        const message =
-          err instanceof Error && 'code' in err
-            ? `Extraction failed: ${(err as Error & { code: string }).code.replace('functions/', '')}. Check Cloud Function logs.`
-            : 'Failed to extract answers. Please try again or type answers manually.';
+        let message = 'Failed to extract answers. Please try again or type answers manually.';
+
+        if (err instanceof Error && 'code' in err) {
+          const code = (err as Error & { code: string }).code.replace('functions/', '');
+          const detail = (err as Error & { message: string }).message || '';
+
+          switch (code) {
+            case 'unauthenticated':
+              message = 'You must be signed in to extract answers. Please refresh and sign in again.';
+              break;
+            case 'permission-denied':
+              message = 'Permission denied. Your teacher profile may not be set up yet — try signing out and back in.';
+              break;
+            case 'invalid-argument':
+              message = detail || 'Invalid input. Make sure Question Count is set before uploading.';
+              break;
+            case 'internal':
+              if (detail.includes('parse')) {
+                message = 'The AI could not read the answer key clearly. Try a clearer photo with good lighting and contrast.';
+              } else if (detail.includes('OPENROUTER_API_KEY')) {
+                message = 'AI service not configured. An admin needs to set up the OpenRouter API key in Cloud Functions secrets.';
+              } else {
+                message = 'Answer extraction failed. Try a clearer photo, or switch to "Type Answers" to enter them manually.';
+              }
+              break;
+            default:
+              message = `Extraction failed (${code}). Try again or type answers manually.`;
+          }
+        }
+
         setPhotoError(message);
         setPhotoExtracting(false);
         setPhotoUploadProgress(null);

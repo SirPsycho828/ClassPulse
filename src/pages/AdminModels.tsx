@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { useToast } from '@/components/ui/Toast';
 import {
   Check,
@@ -9,6 +9,7 @@ import {
   Heart,
   Loader2,
   RefreshCw,
+  Save,
   Search,
   Star,
   Zap,
@@ -17,64 +18,63 @@ import { GuidanceTip } from '@/components/ux/GuidanceTip';
 
 // ---- types ----
 interface ModelAssignment {
-  functionName: string;
+  fn: 'extraction' | 'skillInference' | 'analysis';
+  label: string;
   description: string;
   currentModel: string;
+  requiresVision: boolean;
 }
 
 interface ModelEntry {
   id: string;
   name: string;
-  provider: string;
-  contextWindow: number;
-  hasVision: boolean;
-  pricing: {
-    prompt: number; // per 1M tokens
+  provider?: string;
+  contextLength?: number;
+  vision?: boolean;
+  pricing?: {
+    prompt: number;
     completion: number;
   };
-}
-
-interface CachedModelList {
-  models: ModelEntry[];
-  fetchedAt: string;
 }
 
 // ---- static data ----
 const DEFAULT_ASSIGNMENTS: ModelAssignment[] = [
   {
-    functionName: 'extractStudentData',
-    description: 'Reads handwritten or printed student answers from images',
-    currentModel: 'google/gemini-2.0-flash-001',
+    fn: 'extraction',
+    label: 'Extraction (Papers + Answer Key)',
+    description: 'Reads handwritten/printed student answers from images. Also used for answer key photo extraction.',
+    currentModel: 'google/gemini-2.5-flash',
+    requiresVision: true,
   },
   {
-    functionName: 'inferSkillMapping',
+    fn: 'skillInference',
+    label: 'Skill Inference',
     description: 'Maps questions to skills and learning objectives',
-    currentModel: 'anthropic/claude-sonnet-4-20250514',
+    currentModel: 'anthropic/claude-sonnet-4-6',
+    requiresVision: false,
   },
   {
-    functionName: 'analyzeClass',
+    fn: 'analysis',
+    label: 'Analysis',
     description: 'Generates class analysis, insights, and intervention recommendations',
-    currentModel: 'anthropic/claude-sonnet-4-20250514',
+    currentModel: 'anthropic/claude-sonnet-4-6',
+    requiresVision: false,
   },
 ];
 
-const DEFAULT_MODELS: ModelEntry[] = [
-  { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic', contextWindow: 200000, hasVision: true, pricing: { prompt: 3.0, completion: 15.0 } },
-  { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic', contextWindow: 200000, hasVision: true, pricing: { prompt: 15.0, completion: 75.0 } },
-  { id: 'anthropic/claude-haiku-3-5-20241022', name: 'Claude 3.5 Haiku', provider: 'Anthropic', contextWindow: 200000, hasVision: true, pricing: { prompt: 0.8, completion: 4.0 } },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', contextWindow: 128000, hasVision: true, pricing: { prompt: 2.5, completion: 10.0 } },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI', contextWindow: 128000, hasVision: true, pricing: { prompt: 0.15, completion: 0.6 } },
-  { id: 'openai/o3-mini', name: 'o3 mini', provider: 'OpenAI', contextWindow: 200000, hasVision: false, pricing: { prompt: 1.1, completion: 4.4 } },
-  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash', provider: 'Google', contextWindow: 1000000, hasVision: true, pricing: { prompt: 0.1, completion: 0.4 } },
-  { id: 'google/gemini-2.5-pro-preview', name: 'Gemini 2.5 Pro', provider: 'Google', contextWindow: 1000000, hasVision: true, pricing: { prompt: 1.25, completion: 10.0 } },
-  { id: 'google/gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', provider: 'Google', contextWindow: 1000000, hasVision: true, pricing: { prompt: 0.0, completion: 0.0 } },
-  { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'Meta', contextWindow: 1000000, hasVision: true, pricing: { prompt: 0.2, completion: 0.6 } },
-  { id: 'deepseek/deepseek-chat-v3-0324', name: 'DeepSeek V3 0324', provider: 'DeepSeek', contextWindow: 131072, hasVision: false, pricing: { prompt: 0.15, completion: 0.45 } },
-  { id: 'mistralai/mistral-large-2411', name: 'Mistral Large', provider: 'Mistral', contextWindow: 131072, hasVision: true, pricing: { prompt: 2.0, completion: 6.0 } },
+const FALLBACK_MODELS: ModelEntry[] = [
+  { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4', provider: 'Anthropic', contextLength: 200000, vision: true, pricing: { prompt: 3.0, completion: 15.0 } },
+  { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4', provider: 'Anthropic', contextLength: 200000, vision: true, pricing: { prompt: 15.0, completion: 75.0 } },
+  { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'Anthropic', contextLength: 200000, vision: true, pricing: { prompt: 0.8, completion: 4.0 } },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', contextLength: 128000, vision: true, pricing: { prompt: 2.5, completion: 10.0 } },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI', contextLength: 128000, vision: true, pricing: { prompt: 0.15, completion: 0.6 } },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', contextLength: 1000000, vision: true, pricing: { prompt: 0.15, completion: 0.6 } },
+  { id: 'google/gemini-2.5-pro-preview', name: 'Gemini 2.5 Pro', provider: 'Google', contextLength: 1000000, vision: true, pricing: { prompt: 1.25, completion: 10.0 } },
+  { id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash', provider: 'Google', contextLength: 1000000, vision: true, pricing: { prompt: 0.1, completion: 0.4 } },
+  { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'Meta', contextLength: 1000000, vision: true, pricing: { prompt: 0.2, completion: 0.6 } },
+  { id: 'deepseek/deepseek-chat-v3-0324', name: 'DeepSeek V3 0324', provider: 'DeepSeek', contextLength: 131072, vision: false, pricing: { prompt: 0.15, completion: 0.45 } },
+  { id: 'mistralai/mistral-large-2411', name: 'Mistral Large', provider: 'Mistral', contextLength: 131072, vision: true, pricing: { prompt: 2.0, completion: 6.0 } },
 ];
-
-const CACHE_KEY = 'classpulse_model_list';
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function formatContextWindow(tokens: number) {
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`;
@@ -83,7 +83,6 @@ function formatContextWindow(tokens: number) {
 
 function formatPrice(price: number) {
   if (price === 0) return 'Free';
-  if (price < 1) return `$${price.toFixed(2)}`;
   return `$${price.toFixed(2)}`;
 }
 
@@ -92,7 +91,8 @@ export default function AdminModels() {
 
   const [loading, setLoading] = useState(true);
   const [assignments, setAssignments] = useState<ModelAssignment[]>(DEFAULT_ASSIGNMENTS);
-  const [models, setModels] = useState<ModelEntry[]>(DEFAULT_MODELS);
+  const [savedAssignments, setSavedAssignments] = useState<ModelAssignment[]>(DEFAULT_ASSIGNMENTS);
+  const [models, setModels] = useState<ModelEntry[]>(FALLBACK_MODELS);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterVision, setFilterVision] = useState(false);
   const [filterFree, setFilterFree] = useState(false);
@@ -107,47 +107,32 @@ export default function AdminModels() {
   });
   const [changingFunction, setChangingFunction] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // ---- load cached model list ----
+  // Detect unsaved changes
+  const hasChanges = useMemo(
+    () => assignments.some((a) => {
+      const saved = savedAssignments.find((s) => s.fn === a.fn);
+      return saved?.currentModel !== a.currentModel;
+    }),
+    [assignments, savedAssignments],
+  );
+
+  // ---- load model list from Cloud Function ----
   useEffect(() => {
     async function loadModels() {
       try {
-        // Check localStorage cache first
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const parsed: CachedModelList = JSON.parse(cached);
-          const age = Date.now() - new Date(parsed.fetchedAt).getTime();
-          if (age < CACHE_MAX_AGE_MS && parsed.models.length > 0) {
-            setModels(parsed.models);
-            setLoading(false);
-            return;
-          }
-        }
+        const fetchModels = httpsCallable<
+          Record<string, never>,
+          { models: ModelEntry[]; cached: boolean; stale?: boolean }
+        >(functions, 'fetchAvailableModels');
 
-        // Try Firestore cache
-        const configDoc = await getDoc(doc(db, 'config', 'openrouter'));
-        if (configDoc.exists()) {
-          const data = configDoc.data() as CachedModelList;
-          if (data.models && data.models.length > 0) {
-            setModels(data.models);
-            // Update localStorage cache
-            localStorage.setItem(
-              CACHE_KEY,
-              JSON.stringify({ models: data.models, fetchedAt: new Date().toISOString() }),
-            );
-          }
-        }
-
-        // Also try to load current assignments from config
-        const assignmentsDoc = await getDoc(doc(db, 'config', 'modelAssignments'));
-        if (assignmentsDoc.exists()) {
-          const data = assignmentsDoc.data();
-          if (data.assignments) {
-            setAssignments(data.assignments);
-          }
+        const result = await fetchModels({});
+        if (result.data.models && result.data.models.length > 0) {
+          setModels(result.data.models);
         }
       } catch (err) {
-        console.error('Failed to load model list from Firestore:', err);
+        console.error('Failed to load models from Cloud Function:', err);
         // Fall back to defaults (already set)
       } finally {
         setLoading(false);
@@ -161,27 +146,52 @@ export default function AdminModels() {
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      // In production this would call a Cloud Function to refresh from OpenRouter API.
-      // For now, just refresh from Firestore cache.
-      const configDoc = await getDoc(doc(db, 'config', 'openrouter'));
-      if (configDoc.exists()) {
-        const data = configDoc.data() as CachedModelList;
-        if (data.models && data.models.length > 0) {
-          setModels(data.models);
-          localStorage.setItem(
-            CACHE_KEY,
-            JSON.stringify({ models: data.models, fetchedAt: new Date().toISOString() }),
-          );
-          toast('success', 'Model list refreshed.');
-        }
+      const fetchModels = httpsCallable<
+        Record<string, never>,
+        { models: ModelEntry[]; cached: boolean; stale?: boolean }
+      >(functions, 'fetchAvailableModels');
+
+      const result = await fetchModels({});
+      if (result.data.models && result.data.models.length > 0) {
+        setModels(result.data.models);
+        toast('success', `Model list refreshed — ${result.data.models.length} models loaded.`);
       } else {
-        toast('info', 'Using default model list. Cloud Function not yet wired.');
+        toast('info', 'No models returned. Using existing list.');
       }
     } catch (err) {
       console.error(err);
       toast('error', 'Failed to refresh model list.');
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  // ---- save assignments ----
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const updateConfig = httpsCallable<
+        { fn: string; modelId: string },
+        { success: boolean }
+      >(functions, 'updateModelConfig');
+
+      const changed = assignments.filter((a) => {
+        const saved = savedAssignments.find((s) => s.fn === a.fn);
+        return saved?.currentModel !== a.currentModel;
+      });
+
+      for (const a of changed) {
+        await updateConfig({ fn: a.fn, modelId: a.currentModel });
+      }
+
+      setSavedAssignments([...assignments]);
+      toast('success', `Saved ${changed.length} model assignment${changed.length === 1 ? '' : 's'}.`);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Failed to save';
+      toast('error', msg);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -202,14 +212,13 @@ export default function AdminModels() {
   }
 
   // ---- assign model ----
-  function handleAssignModel(functionName: string, modelId: string) {
+  function handleAssignModel(fn: string, modelId: string) {
     setAssignments((prev) =>
       prev.map((a) =>
-        a.functionName === functionName ? { ...a, currentModel: modelId } : a,
+        a.fn === fn ? { ...a, currentModel: modelId } : a,
       ),
     );
     setChangingFunction(null);
-    toast('success', `Model assigned to ${functionName}. Save to apply.`);
   }
 
   // ---- filtered models ----
@@ -222,16 +231,16 @@ export default function AdminModels() {
         (m) =>
           m.name.toLowerCase().includes(q) ||
           m.id.toLowerCase().includes(q) ||
-          m.provider.toLowerCase().includes(q),
+          (m.provider || '').toLowerCase().includes(q),
       );
     }
 
     if (filterVision) {
-      result = result.filter((m) => m.hasVision);
+      result = result.filter((m) => m.vision);
     }
     if (filterFree) {
       result = result.filter(
-        (m) => m.pricing.prompt === 0 && m.pricing.completion === 0,
+        (m) => m.pricing && m.pricing.prompt === 0 && m.pricing.completion === 0,
       );
     }
     if (filterFavorites) {
@@ -253,15 +262,32 @@ export default function AdminModels() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-foreground">Model Configuration</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage AI model assignments for pipeline functions.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-foreground">Model Configuration</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage AI model assignments for pipeline functions.
+          </p>
+        </div>
+
+        {hasChanges && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[--radius-md] font-medium text-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        )}
       </div>
 
       <GuidanceTip id="admin-models-intro">
-        These settings control which AI models power each step of the analysis pipeline. The defaults work well for most use cases — only change them if you have a specific reason.
+        These settings control which AI models power each step of the analysis pipeline. The defaults work well for most use cases — only change them if you have a specific reason. The Extraction model must support vision (image input) since it reads photos of student papers and answer keys.
       </GuidanceTip>
 
       {/* ====== SECTION 1: CURRENT ASSIGNMENTS ====== */}
@@ -273,23 +299,34 @@ export default function AdminModels() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {assignments.map((assignment) => {
             const model = models.find((m) => m.id === assignment.currentModel);
-            const isChanging = changingFunction === assignment.functionName;
+            const isChanging = changingFunction === assignment.fn;
+            const saved = savedAssignments.find((s) => s.fn === assignment.fn);
+            const isModified = saved?.currentModel !== assignment.currentModel;
 
             return (
               <div
-                key={assignment.functionName}
-                className="bg-card border border-border rounded-[--radius-md] p-4"
+                key={assignment.fn}
+                className={`bg-card border rounded-[--radius-md] p-4 ${
+                  isModified ? 'border-amber-400' : 'border-border'
+                }`}
               >
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <h3 className="font-heading text-sm font-semibold text-foreground">
-                      {assignment.functionName}
+                      {assignment.label}
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {assignment.description}
                     </p>
                   </div>
-                  <Zap className="w-4 h-4 text-primary/60 flex-shrink-0" />
+                  <div className="flex items-center gap-1">
+                    {isModified && (
+                      <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                        changed
+                      </span>
+                    )}
+                    <Zap className="w-4 h-4 text-primary/60 flex-shrink-0" />
+                  </div>
                 </div>
 
                 <div className="mt-3 p-2 bg-muted/50 rounded-[--radius-md]">
@@ -299,12 +336,16 @@ export default function AdminModels() {
                   </div>
                   {model && (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">{model.provider}</span>
-                      <span className="text-xs text-border">|</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatContextWindow(model.contextWindow)} ctx
-                      </span>
-                      {model.hasVision && (
+                      <span className="text-xs text-muted-foreground">{model.provider || ''}</span>
+                      {model.contextLength && (
+                        <>
+                          <span className="text-xs text-border">|</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatContextWindow(model.contextLength)} ctx
+                          </span>
+                        </>
+                      )}
+                      {model.vision && (
                         <>
                           <span className="text-xs text-border">|</span>
                           <Eye className="w-3 h-3 text-blue-400" />
@@ -314,10 +355,17 @@ export default function AdminModels() {
                   )}
                 </div>
 
+                {assignment.requiresVision && (
+                  <p className="mt-2 text-[10px] text-amber-600 flex items-center gap-1">
+                    <Eye className="w-3 h-3" />
+                    Requires vision-capable model
+                  </p>
+                )}
+
                 <button
                   onClick={() =>
                     setChangingFunction(
-                      isChanging ? null : assignment.functionName,
+                      isChanging ? null : assignment.fn,
                     )
                   }
                   className="mt-3 w-full text-xs text-primary hover:text-primary font-medium py-1.5 rounded-[--radius-md] border border-primary/20 hover:bg-primary/10 transition-colors"
@@ -328,36 +376,38 @@ export default function AdminModels() {
                 {/* Model selector dropdown */}
                 {isChanging && (
                   <div className="mt-2 max-h-48 overflow-y-auto border border-border rounded-[--radius-md] bg-card shadow-[--shadow-lg]">
-                    {models.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() =>
-                          handleAssignModel(assignment.functionName, m.id)
-                        }
-                        className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-center justify-between border-b border-border/50 last:border-0 ${
-                          m.id === assignment.currentModel
-                            ? 'bg-primary/10'
-                            : ''
-                        }`}
-                      >
-                        <div>
-                          <span className="font-medium text-foreground">
-                            {m.name}
-                          </span>
-                          <span className="text-muted-foreground ml-1">
-                            {m.provider}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {m.hasVision && (
-                            <Eye className="w-3 h-3 text-blue-400" />
-                          )}
-                          {m.id === assignment.currentModel && (
-                            <Check className="w-3 h-3 text-primary" />
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                    {models
+                      .filter((m) => !assignment.requiresVision || m.vision)
+                      .map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() =>
+                            handleAssignModel(assignment.fn, m.id)
+                          }
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-center justify-between border-b border-border/50 last:border-0 ${
+                            m.id === assignment.currentModel
+                              ? 'bg-primary/10'
+                              : ''
+                          }`}
+                        >
+                          <div>
+                            <span className="font-medium text-foreground">
+                              {m.name}
+                            </span>
+                            <span className="text-muted-foreground ml-1">
+                              {m.provider || ''}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {m.vision && (
+                              <Eye className="w-3 h-3 text-blue-400" />
+                            )}
+                            {m.id === assignment.currentModel && (
+                              <Check className="w-3 h-3 text-primary" />
+                            )}
+                          </div>
+                        </button>
+                      ))}
                   </div>
                 )}
               </div>
@@ -380,7 +430,7 @@ export default function AdminModels() {
             <RefreshCw
               className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`}
             />
-            Refresh
+            Refresh from OpenRouter
           </button>
         </div>
 
@@ -480,22 +530,22 @@ export default function AdminModels() {
                     <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">
                       {model.id}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{model.provider}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{model.provider || ''}</td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {formatContextWindow(model.contextWindow)}
+                      {model.contextLength ? formatContextWindow(model.contextLength) : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      {model.hasVision ? (
+                      {model.vision ? (
                         <Eye className="w-4 h-4 text-blue-500 mx-auto" />
                       ) : (
                         <span className="text-border">-</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {formatPrice(model.pricing.prompt)}
+                      {model.pricing ? formatPrice(model.pricing.prompt) : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {formatPrice(model.pricing.completion)}
+                      {model.pricing ? formatPrice(model.pricing.completion) : '—'}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="relative">
@@ -511,8 +561,8 @@ export default function AdminModels() {
                         >
                           <option value="">Assign...</option>
                           {assignments.map((a) => (
-                            <option key={a.functionName} value={a.functionName}>
-                              {a.functionName}
+                            <option key={a.fn} value={a.fn}>
+                              {a.label}
                               {a.currentModel === model.id ? ' (current)' : ''}
                             </option>
                           ))}
@@ -535,7 +585,6 @@ export default function AdminModels() {
 
         <p className="text-xs text-muted-foreground mt-2">
           {models.length} models loaded. Prices per 1M tokens.
-          Cloud Function for live refresh not yet wired.
         </p>
       </section>
     </div>

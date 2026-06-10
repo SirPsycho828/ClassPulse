@@ -368,6 +368,22 @@ function StepAssignmentDetails({
         />
       </div>
 
+      {/* CSV format guidance for Grade For Me + CSV */}
+      {assignmentType === 'objective' && uploadMode === 'csv' && (
+        <div className="bg-primary/5 border border-primary/15 rounded-[--radius-md] p-4">
+          <p className="text-sm font-semibold text-primary mb-2">CSV Format for "Grade For Me"</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your CSV should have a <strong>Student Name</strong> column and answer columns labeled <strong>Q1, Q2, Q3...</strong> with each student's selected answer (A, B, C, D, etc.).
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed mt-1.5">
+            Include an <strong>ANSWER KEY</strong> row with the correct answers so ClassPulse can grade automatically, detect misconceptions, and identify skill gaps.
+          </p>
+          <p className="text-xs text-muted-foreground mt-2 italic">
+            A downloadable template will be available on the upload page.
+          </p>
+        </div>
+      )}
+
       {/* Total Points */}
       <div>
         <label htmlFor="totalPoints" className="block text-sm font-medium text-foreground mb-1">

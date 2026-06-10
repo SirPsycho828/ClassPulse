@@ -20,6 +20,7 @@ import {
   Check,
   Loader2,
   AlertCircle,
+  Download,
 } from 'lucide-react';
 import { GuidanceTip } from '@/components/ux/GuidanceTip';
 
@@ -826,6 +827,20 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
             Drag & drop a spreadsheet here, or click to browse
           </p>
           <p className="text-xs text-muted-foreground mt-1">CSV, TSV, XLSX -- max 5 MB</p>
+          <div
+            className="mt-3 flex items-center justify-center gap-1.5 text-xs"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">Not sure about the format?</span>
+            <a
+              href="/classpulse-csv-template.csv"
+              download
+              className="text-primary hover:underline font-medium"
+            >
+              Download template
+            </a>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

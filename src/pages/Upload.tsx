@@ -36,6 +36,7 @@ interface AssignmentDoc {
   teacherId: string;
   status: string;
   imageUrls: string[];
+  type?: 'scored' | 'objective';
 }
 
 interface UploadingFile {
@@ -608,7 +609,7 @@ function ImageUpload({
 // CSV Upload
 // ---------------------------------------------------------------------------
 
-function CsvUpload({ assignmentId }: { assignmentId: string }) {
+function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; assignmentType: 'scored' | 'objective' }) {
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -619,6 +620,8 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([]);
   const [processing, setProcessing] = useState(false);
   const [delimiter, setDelimiter] = useState(',');
+  const [answerKeyRow, setAnswerKeyRow] = useState<string[] | null>(null);
+  const [answerKeyRowIndex, setAnswerKeyRowIndex] = useState<number>(-1);
 
   // Detect delimiter
   function detectDelimiter(text: string): string {
@@ -652,13 +655,15 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
   }
 
   // Auto-detect column mappings
-  function autoDetectMappings(hdrs: string[]): ColumnMapping[] {
+  function autoDetectMappings(hdrs: string[], type: 'scored' | 'objective'): ColumnMapping[] {
     const namePatterns = /^(student|name|student.?name|full.?name|last.?name|first.?name)$/i;
     const scorePatterns = /^(score|grade|points|total|marks|result|percent|pct)$/i;
+    const questionPatterns = /^(q|#|question\s*)\d+$/i;
 
     return hdrs.map((h) => {
       if (namePatterns.test(h)) return { column: h, mappedTo: 'student_name' };
       if (scorePatterns.test(h)) return { column: h, mappedTo: 'score' };
+      if (type === 'objective' && questionPatterns.test(h)) return { column: h, mappedTo: 'question_answer' };
       return { column: h, mappedTo: 'ignore' };
     });
   }
@@ -691,8 +696,34 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
     setHeaders(parsed.headers);
     setAllRows(parsed.rows);
 
-    // Preview first 5 rows
-    const preview: CsvPreviewRow[] = parsed.rows.slice(0, 5).map((row) => {
+    // Auto-detect column mappings
+    setColumnMappings(autoDetectMappings(parsed.headers, assignmentType));
+
+    // Answer key detection (objective assignments only)
+    let detectedKeyIdx = -1;
+    if (assignmentType === 'objective') {
+      const namePatterns = /^(student|name|student.?name|full.?name|last.?name|first.?name)$/i;
+      const nameIdx = parsed.headers.findIndex((h) => namePatterns.test(h));
+      if (nameIdx !== -1) {
+        const keyPatterns = /^(answer\s*key|key|correct|answer)$/i;
+        const keyIdx = parsed.rows.findIndex((row) => keyPatterns.test(row[nameIdx]?.trim() ?? ''));
+        if (keyIdx !== -1) {
+          detectedKeyIdx = keyIdx;
+          setAnswerKeyRow(parsed.rows[keyIdx]);
+          setAnswerKeyRowIndex(keyIdx);
+        } else {
+          setAnswerKeyRow(null);
+          setAnswerKeyRowIndex(-1);
+        }
+      }
+    } else {
+      setAnswerKeyRow(null);
+      setAnswerKeyRowIndex(-1);
+    }
+
+    // Preview first 5 rows (excluding answer key row)
+    const previewRows = detectedKeyIdx >= 0 ? parsed.rows.filter((_, i) => i !== detectedKeyIdx) : parsed.rows;
+    const preview: CsvPreviewRow[] = previewRows.slice(0, 5).map((row) => {
       const obj: CsvPreviewRow = {};
       parsed.headers.forEach((h, i) => {
         obj[h] = row[i] ?? '';
@@ -700,9 +731,6 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
       return obj;
     });
     setRows(preview);
-
-    // Auto-detect column mappings
-    setColumnMappings(autoDetectMappings(parsed.headers));
   }
 
   // Drag-and-drop
@@ -735,39 +763,84 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
   const scoreColIndex = getMappedIndex('score');
   const nameColIndex = getMappedIndex('student_name');
 
-  const hasRequiredMappings = scoreColIndex !== -1 && nameColIndex !== -1;
+  const questionColIndices = columnMappings
+    .map((m, i) => (m.mappedTo === 'question_answer' ? i : -1))
+    .filter((i) => i !== -1);
+
+  const hasRequiredMappings =
+    assignmentType === 'objective'
+      ? nameColIndex !== -1 && questionColIndices.length > 0 && answerKeyRow !== null
+      : nameColIndex !== -1 && scoreColIndex !== -1;
 
   // Process CSV
   async function handleProcess() {
     if (!hasRequiredMappings) {
-      toast('error', 'Map both a student name and score column.');
+      if (assignmentType === 'objective') {
+        toast('error', 'Map a student name column, at least one question answer column, and ensure an answer key row is present.');
+      } else {
+        toast('error', 'Map both a student name and score column.');
+      }
       return;
     }
 
     setProcessing(true);
     try {
-      // Build extraction result from CSV data
-      const extractedStudents = allRows
-        .filter((row) => row[nameColIndex]?.trim())
-        .map((row, i) => {
-          const rawName = row[nameColIndex]?.trim() ?? '';
-          const rawScore = row[scoreColIndex]?.trim() ?? '0';
-          const scoreNum = parseFloat(rawScore) || 0;
+      let extractedStudents: object[];
+      let answerKey: string[] | null = null;
 
-          return {
-            extractionIndex: i,
-            sourceImageIndex: 0,
-            rawName,
-            nameConfidence: 1.0,
-            answers: [],
-            totalScore: {
-              raw: rawScore,
-              normalized: scoreNum > 1 ? scoreNum / 100 : scoreNum,
-              confidence: 1.0,
-            },
-            flags: [],
-          };
-        });
+      if (assignmentType === 'objective') {
+        // Build answer key from detected answer key row
+        answerKey = questionColIndices.map((idx) => answerKeyRow![idx]?.trim() ?? '');
+
+        // Filter out the answer key row from student data
+        extractedStudents = allRows
+          .filter((_, i) => i !== answerKeyRowIndex)
+          .filter((row) => row[nameColIndex]?.trim())
+          .map((row, i) => {
+            const rawName = row[nameColIndex]?.trim() ?? '';
+            const answers = questionColIndices.map((idx, qNum) => ({
+              questionNumber: qNum + 1,
+              answer: row[idx]?.trim() ?? '',
+            }));
+
+            return {
+              extractionIndex: i,
+              sourceImageIndex: 0,
+              rawName,
+              nameConfidence: 1.0,
+              answers,
+              totalScore: {
+                raw: '0',
+                normalized: 0,
+                confidence: 1.0,
+              },
+              flags: [],
+            };
+          });
+      } else {
+        // Scored assignment: existing logic
+        extractedStudents = allRows
+          .filter((row) => row[nameColIndex]?.trim())
+          .map((row, i) => {
+            const rawName = row[nameColIndex]?.trim() ?? '';
+            const rawScore = row[scoreColIndex]?.trim() ?? '0';
+            const scoreNum = parseFloat(rawScore) || 0;
+
+            return {
+              extractionIndex: i,
+              sourceImageIndex: 0,
+              rawName,
+              nameConfidence: 1.0,
+              answers: [],
+              totalScore: {
+                raw: rawScore,
+                normalized: scoreNum > 1 ? scoreNum / 100 : scoreNum,
+                confidence: 1.0,
+              },
+              flags: [],
+            };
+          });
+      }
 
       // Update assignment status
       await updateDoc(doc(db, 'assignments', assignmentId), {
@@ -785,6 +858,7 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
           partialPapersDetected: false,
           processingTimeMs: 0,
         },
+        ...(answerKey ? { answerKey } : {}),
       });
 
       navigate(`/analysis/${assignmentId}/review`);
@@ -919,6 +993,9 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
                     <option value="ignore">Ignore</option>
                     <option value="student_name">Student Name</option>
                     <option value="score">Score</option>
+                    {assignmentType === 'objective' && (
+                      <option value="question_answer">Question Answer</option>
+                    )}
                   </select>
                   {m.mappedTo !== 'ignore' && (
                     <Check className="w-4 h-4 text-success flex-shrink-0" />
@@ -928,12 +1005,14 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
             </div>
           </div>
 
-          {/* Score normalization preview */}
+          {/* Score normalization preview / ready banner */}
           {hasRequiredMappings && (
             <div className="bg-success/10 border border-success/20 rounded-[--radius-md] p-3">
               <p className="text-sm text-success font-medium">Ready to process</p>
               <p className="text-xs text-success mt-1">
-                {allRows.filter((r) => r[nameColIndex]?.trim()).length} students detected from {allRows.length} data rows.
+                {assignmentType === 'objective'
+                  ? `${allRows.filter((row, i) => i !== answerKeyRowIndex && row[nameColIndex]?.trim()).length} students detected · ${questionColIndices.length} question column${questionColIndices.length !== 1 ? 's' : ''} mapped.`
+                  : `${allRows.filter((r) => r[nameColIndex]?.trim()).length} students detected from ${allRows.length} data rows.`}
               </p>
             </div>
           )}
@@ -941,8 +1020,27 @@ function CsvUpload({ assignmentId }: { assignmentId: string }) {
           {!hasRequiredMappings && (
             <div className="flex items-center gap-2 text-sm text-warning">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Map both a student name column and a score column to continue.
+              {assignmentType === 'objective'
+                ? 'Map a student name column and at least one question answer column to continue.'
+                : 'Map both a student name column and a score column to continue.'}
             </div>
+          )}
+
+          {/* Answer key status indicator (objective only) */}
+          {assignmentType === 'objective' && file && (
+            answerKeyRow ? (
+              <div className="bg-success/10 border border-success/20 rounded-[--radius-md] p-3">
+                <p className="text-sm text-success font-medium">Answer key detected</p>
+                <p className="text-xs text-success mt-1">
+                  Row &ldquo;{answerKeyRow[nameColIndex]}&rdquo; will be used as the answer key and excluded from student data.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-warning">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                No answer key row found. Add a row with &ldquo;ANSWER KEY&rdquo; in the name column.
+              </div>
+            )
           )}
 
           {/* Process button */}
@@ -1111,7 +1209,7 @@ export default function Upload() {
             onStartExtraction={() => setShowProcessing(true)}
           />
         ) : (
-          <CsvUpload assignmentId={id} />
+          <CsvUpload assignmentId={id} assignmentType={assignment.type ?? 'scored'} />
         )}
       </div>
     </div>

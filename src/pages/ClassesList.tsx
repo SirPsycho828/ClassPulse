@@ -9,9 +9,9 @@ import { TrendArrow } from '@/components/ui/TrendArrow';
 import { computeTrend, buildSparklineData, formatDate } from '@/lib/longitudinalUtils';
 import type { Trend } from '@/lib/summaryTypes';
 import type { AnalysisResult } from '@/lib/schemas';
-import { Plus, Search, GraduationCap, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Search, GraduationCap, Loader2 } from 'lucide-react';
 
-interface ClassCard {
+interface ClassRow {
   id: string;
   name: string;
   studentCount: number;
@@ -24,6 +24,9 @@ interface ClassCard {
   sparklineData: number[];
 }
 
+type SortKey = 'name' | 'students' | 'analyses' | 'score' | 'date';
+type SortDir = 'asc' | 'desc';
+
 export default function ClassesList() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -33,6 +36,8 @@ export default function ClassesList() {
   const [loadingAnalyses, setLoadingAnalyses] = useState(true);
   const [showAddClass, setShowAddClass] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // Subscribe to classes
   useEffect(() => {
@@ -77,7 +82,6 @@ export default function ClassesList() {
 
   // Merge classes with computed analysis stats
   const mergedClasses = useMemo(() => {
-    // Group analyses by classId
     const byClass = new Map<string, AnalysisResult[]>();
     for (const a of analyses) {
       const list = byClass.get(a.classId) || [];
@@ -85,8 +89,8 @@ export default function ClassesList() {
       byClass.set(a.classId, list);
     }
 
-    return classes
-      .map((c): ClassCard => {
+    let rows = classes
+      .map((c): ClassRow => {
         const classAnalyses = (byClass.get(c.id) || []).sort(
           (a, b) => a.generatedAt.localeCompare(b.generatedAt),
         );
@@ -105,7 +109,38 @@ export default function ClassesList() {
       .filter((c) =>
         c.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
-  }, [classes, analyses, searchQuery]);
+
+    // Sort
+    rows = [...rows].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'name') cmp = a.name.localeCompare(b.name);
+      else if (sortKey === 'students') cmp = a.studentCount - b.studentCount;
+      else if (sortKey === 'analyses') cmp = a.analysisCount - b.analysisCount;
+      else if (sortKey === 'score') cmp = (a.latestMeanScore ?? -1) - (b.latestMeanScore ?? -1);
+      else if (sortKey === 'date') cmp = (a.lastAnalysisDate ?? '').localeCompare(b.lastAnalysisDate ?? '');
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+
+    return rows;
+  }, [classes, analyses, searchQuery, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  }
+
+  function SortIcon({ column }: { column: SortKey }) {
+    if (sortKey !== column) return null;
+    return sortDir === 'asc' ? (
+      <ChevronUp className="inline w-3 h-3 ml-0.5" />
+    ) : (
+      <ChevronDown className="inline w-3 h-3 ml-0.5" />
+    );
+  }
 
   if (loading) {
     return (
@@ -159,58 +194,121 @@ export default function ClassesList() {
         </div>
       )}
 
-      {/* Card grid */}
+      {/* Table */}
       {mergedClasses.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mergedClasses.map((c) => (
-            <Link
-              key={c.id}
-              to={`/classes/${c.id}`}
-              className="block bg-card border border-border rounded-[--radius-md] p-5 card-hover transition-all"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-heading font-semibold text-foreground text-lg leading-tight">
-                  {c.name}
-                </h3>
-                {c.analysisCount > 0 && <TrendArrow trend={c.trend} />}
-              </div>
-
-              <p className="text-sm text-muted-foreground mb-3">
-                {c.studentCount} student{c.studentCount !== 1 ? 's' : ''}
-                {c.analysisCount > 0 ? ` \u00b7 ${c.analysisCount} analys${c.analysisCount !== 1 ? 'es' : 'is'}` : ''}
-              </p>
-
-              {c.latestMeanScore !== null && c.lastAnalysisDate ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xl font-semibold text-foreground">
-                      {Math.round(c.latestMeanScore * 100)}%
-                      <span className="text-sm font-normal text-muted-foreground ml-1">avg</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Last analyzed {formatDate(c.lastAnalysisDate)}
-                    </p>
-                  </div>
-                  {c.sparklineData.length >= 2 && (
-                    <Sparkline data={c.sparklineData} />
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No analyses yet.{' '}
-                  <span
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate(`/analysis/new?classId=${c.id}`);
-                    }}
-                    className="text-primary hover:underline cursor-pointer"
+        <div className="bg-card border border-border rounded-[--radius-md] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th
+                    className="text-left py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    onClick={() => toggleSort('name')}
                   >
-                    Start one &rarr;
-                  </span>
-                </p>
-              )}
-            </Link>
-          ))}
+                    Class <SortIcon column="name" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    onClick={() => toggleSort('students')}
+                  >
+                    Students <SortIcon column="students" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    onClick={() => toggleSort('analyses')}
+                  >
+                    Analyses <SortIcon column="analyses" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    onClick={() => toggleSort('score')}
+                  >
+                    Latest Avg <SortIcon column="score" />
+                  </th>
+                  <th className="text-center py-3 px-4 text-muted-foreground font-medium">
+                    Trend
+                  </th>
+                  <th className="text-center py-3 px-4 text-muted-foreground font-medium">
+                    History
+                  </th>
+                  <th
+                    className="text-left py-3 px-4 text-muted-foreground font-medium cursor-pointer hover:text-foreground"
+                    onClick={() => toggleSort('date')}
+                  >
+                    Last Analyzed <SortIcon column="date" />
+                  </th>
+                  <th className="text-right py-3 px-4 text-muted-foreground font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {mergedClasses.map((c) => (
+                  <tr
+                    key={c.id}
+                    className="border-b border-border/50 hover:bg-muted/20 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/classes/${c.id}`)}
+                  >
+                    <td className="py-3 px-4">
+                      <Link
+                        to={`/classes/${c.id}`}
+                        className="font-medium text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {c.name}
+                      </Link>
+                      {(c.gradeLevel || c.subject) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {[c.gradeLevel, c.subject].filter(Boolean).join(' \u00b7 ')}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {c.studentCount}
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {c.analysisCount || <span className="text-muted-foreground/50">&mdash;</span>}
+                    </td>
+                    <td className="py-3 px-4 text-center font-medium">
+                      {c.latestMeanScore !== null
+                        ? `${Math.round(c.latestMeanScore * 100)}%`
+                        : <span className="text-muted-foreground/50">&mdash;</span>}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {c.analysisCount > 0 ? (
+                        <span className="inline-flex justify-center">
+                          <TrendArrow trend={c.trend} size={14} />
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/50">&mdash;</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="flex justify-center">
+                        {c.sparklineData.length >= 2 ? (
+                          <Sparkline data={c.sparklineData} />
+                        ) : (
+                          <span className="text-muted-foreground/50">&mdash;</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-muted-foreground">
+                      {c.lastAnalysisDate
+                        ? formatDate(c.lastAnalysisDate)
+                        : <span className="text-muted-foreground/50">Never</span>}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <Link
+                        to={`/analysis/new?classId=${c.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-primary hover:underline whitespace-nowrap"
+                      >
+                        + Analysis
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

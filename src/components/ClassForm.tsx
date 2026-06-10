@@ -51,59 +51,9 @@ const SUBJECTS = ['Math', 'ELA', 'Science', 'Social Studies', 'Other'];
 // ---------------------------------------------------------------------------
 
 export function generateDisplayNames(students: { firstName: string; lastName: string }[]): string[] {
-  const names: string[] = [];
-
-  for (let i = 0; i < students.length; i++) {
-    const s = students[i];
-
-    if (!s.lastName) {
-      names.push(s.firstName);
-      continue;
-    }
-
-    const baseDisplay = `${s.firstName} ${s.lastName.charAt(0)}.`;
-
-    // Find collisions: same first name AND same last initial
-    const collisions = students
-      .map((other, idx) => ({ other, idx }))
-      .filter(
-        ({ other, idx }) =>
-          idx !== i &&
-          other.firstName.toLowerCase() === s.firstName.toLowerCase() &&
-          other.lastName.charAt(0).toLowerCase() === s.lastName.charAt(0).toLowerCase()
-      );
-
-    if (collisions.length === 0) {
-      names.push(baseDisplay);
-    } else {
-      // Extend last name until unique among colliders
-      const allSameName = [s, ...collisions.map((c) => c.other)];
-      let charCount = 2;
-      let resolved = false;
-
-      while (charCount <= s.lastName.length && !resolved) {
-        const prefix = s.lastName.slice(0, charCount).toLowerCase();
-        const matchingSamePrefix = allSameName.filter(
-          (other) =>
-            other !== s &&
-            other.lastName.slice(0, charCount).toLowerCase() === prefix
-        );
-        if (matchingSamePrefix.length === 0) {
-          resolved = true;
-        } else {
-          charCount++;
-        }
-      }
-
-      if (resolved && charCount <= s.lastName.length) {
-        names.push(`${s.firstName} ${s.lastName.slice(0, charCount)}.`);
-      } else {
-        names.push(`${s.firstName} ${s.lastName}`);
-      }
-    }
-  }
-
-  return names;
+  return students.map((s) =>
+    s.lastName ? `${s.firstName} ${s.lastName}` : s.firstName,
+  );
 }
 
 function parseNames(raw: string): ParsedStudent[] {

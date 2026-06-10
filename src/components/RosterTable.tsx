@@ -183,7 +183,7 @@ export function RosterTable({ classId }: RosterTableProps) {
       );
       const displayNames = generateDisplayNames(allStudents);
       const idx = students.findIndex((s) => s.id === editingId);
-      const newDisplayName = editDisplayName.trim() || displayNames[idx] || `${editFirstName.trim()} ${editLastName.charAt(0)}.`;
+      const newDisplayName = editDisplayName.trim() || displayNames[idx] || `${editFirstName.trim()} ${editLastName.trim()}`;
 
       await updateDoc(doc(db, 'classes', classId, 'students', editingId), {
         firstName: editFirstName.trim(),

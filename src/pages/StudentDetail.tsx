@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
-import { useAuth } from '@/contexts/AuthContext';
-import { resolveAnalysis } from '@/lib/resolveAnalysis';
+import { storage } from '@/lib/firebase';
+import { useAnalysisContext } from '@/components/layout/AnalysisLayout';
 import { useToast } from '@/components/ui/Toast';
-import type { AnalysisResult } from '@/lib/schemas';
 import {
-  ArrowLeft,
   ArrowRight,
   Check,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   FileImage,
-  Loader2,
   TrendingDown,
   TrendingUp,
   Minus,
@@ -73,38 +68,23 @@ export default function StudentDetail() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { analysis, gradedResult, answerKeyQuestions } = useAnalysisContext();
 
-  const [loading, setLoading] = useState(true);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [assignmentTitle, setAssignmentTitle] = useState('');
   const [showWrongOnly, setShowWrongOnly] = useState(false);
   const [quizPhotoUrl, setQuizPhotoUrl] = useState<string | null>(null);
   const [photoExpanded, setPhotoExpanded] = useState(true);
   const [gradedStudentQuestions, setGradedStudentQuestions] = useState<
     { questionNumber: number; studentAnswer: string; correctAnswer: string; isCorrect: boolean }[]
   >([]);
-  const [answerKeyQuestions, setAnswerKeyQuestions] = useState<
-    { questionNumber: number; questionText: string | null }[]
-  >([]);
 
-  // ---- load data ----
+  // ---- load student-specific data ----
   useEffect(() => {
-    if (!id) return;
+    if (!studentId) return;
 
-    async function loadData() {
+    async function loadStudentData() {
       try {
-        const analysisDoc = await resolveAnalysis(id!, user!.uid);
-        if (!analysisDoc || !analysisDoc.exists()) {
-          toast('error', 'Analysis not found.');
-          navigate('/dashboard');
-          return;
-        }
-        const analysisData = analysisDoc.data() as AnalysisResult;
-        setAnalysis(analysisData);
-
         // Load quiz photo for this student
-        const studentInsight = analysisData.studentInsights.find(
+        const studentInsight = analysis.studentInsights.find(
           (s) => s.studentId === studentId,
         );
         if (studentInsight?.sourceImagePath) {
@@ -116,53 +96,32 @@ export default function StudentDetail() {
           }
         }
 
-        const assignDoc = await getDoc(
-          doc(db, 'assignments', analysisData.assignmentId),
-        );
-        if (assignDoc.exists()) {
-          const ad = assignDoc.data();
-          setAssignmentTitle(ad.title ?? 'Untitled Assignment');
-
-          // Load answer key question text
-          if (ad.answerKey?.questions) {
-            setAnswerKeyQuestions(
+        // Extract graded student questions from the shared gradedResult
+        if (gradedResult?.gradedStudents) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const gs = (gradedResult.gradedStudents as any[]).find(
+            (s) => s.studentId === studentId,
+          );
+          if (gs?.perQuestion) {
+            setGradedStudentQuestions(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (ad.answerKey.questions as any[]).map((q) => ({
-                questionNumber: q.questionNumber,
-                questionText: q.questionText || null,
+              gs.perQuestion.map((pq: any) => ({
+                questionNumber: pq.questionNumber,
+                studentAnswer: pq.studentAnswer || '',
+                correctAnswer: pq.correctAnswer || '',
+                isCorrect: !!pq.isCorrect,
               })),
             );
-          }
-
-          // Load graded result for this student
-          if (ad.pipelineState?.gradedResult?.gradedStudents) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const gs = (ad.pipelineState.gradedResult.gradedStudents as any[]).find(
-              (s) => s.studentId === studentId,
-            );
-            if (gs?.perQuestion) {
-              setGradedStudentQuestions(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                gs.perQuestion.map((pq: any) => ({
-                  questionNumber: pq.questionNumber,
-                  studentAnswer: pq.studentAnswer || '',
-                  correctAnswer: pq.correctAnswer || '',
-                  isCorrect: !!pq.isCorrect,
-                })),
-              );
-            }
           }
         }
       } catch (err) {
         console.error(err);
         toast('error', 'Failed to load student data.');
-      } finally {
-        setLoading(false);
       }
     }
 
-    loadData();
-  }, [id, navigate, toast]);
+    loadStudentData();
+  }, [studentId, analysis, gradedResult, toast]);
 
   // ---- find student + neighbors ----
   const studentIndex = useMemo(() => {
@@ -251,16 +210,6 @@ export default function StudentDetail() {
     return Object.values(groups);
   }, [student]);
 
-  // ---- loading ----
-  if (loading || !analysis) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        <span className="ml-2 text-sm text-muted-foreground">Loading student data...</span>
-      </div>
-    );
-  }
-
   if (!student) {
     return (
       <div className="text-center py-20">
@@ -280,19 +229,6 @@ export default function StudentDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="text-sm text-muted-foreground">
-        <Link to="/dashboard" className="hover:text-primary">
-          Dashboard
-        </Link>
-        <span className="mx-1.5">/</span>
-        <Link to={`/analysis/${id}`} className="hover:text-primary">
-          {assignmentTitle}
-        </Link>
-        <span className="mx-1.5">/</span>
-        <span className="text-foreground">{student.studentName}</span>
-      </nav>
-
       {/* ====== STUDENT HEADER ====== */}
       <section className="bg-card border border-border rounded-[--radius-md] p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -646,16 +582,6 @@ export default function StudentDetail() {
         />
       )}
 
-      {/* Back link */}
-      <div className="pt-4 border-t border-border">
-        <Link
-          to={`/analysis/${id}`}
-          className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary font-medium"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Class Overview
-        </Link>
-      </div>
     </div>
   );
 }

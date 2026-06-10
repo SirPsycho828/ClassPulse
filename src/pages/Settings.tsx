@@ -37,13 +37,17 @@ export default function Settings() {
   const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
   async function validateImageBytes(file: File): Promise<boolean> {
-    const buf = await file.slice(0, 4).arrayBuffer();
+    const buf = await file.slice(0, 12).arrayBuffer();
     const bytes = new Uint8Array(buf);
-    // JPEG: FF D8 FF, PNG: 89 50 4E 47, GIF: 47 49 46, WebP: 52 49 46 46
+    // JPEG: FF D8 FF
     if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return true;
+    // PNG: 89 50 4E 47
     if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return true;
+    // GIF: 47 49 46
     if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return true;
-    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return true;
+    // WebP: RIFF at bytes 0-3, WEBP at bytes 8-11
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return true;
     return false;
   }
 

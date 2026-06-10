@@ -139,6 +139,10 @@ function clampField(s: string): string {
 }
 
 function parseCSV(text: string): ParsedStudent[] {
+  const MAX_CSV_SIZE = 1024 * 1024; // 1 MB limit
+  if (text.length > MAX_CSV_SIZE) {
+    throw new Error('CSV file is too large (max 1 MB)');
+  }
   const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   if (lines.length < 2) return [];
 
@@ -248,9 +252,13 @@ export function ClassForm({ onComplete, onCancel, editingClass }: ClassFormProps
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const parsed = parseCSV(text);
-      setStudents(parsed);
-      setShowPreview(true);
+      try {
+        const parsed = parseCSV(text);
+        setStudents(parsed);
+        setShowPreview(true);
+      } catch (err) {
+        toast('error', err instanceof Error ? err.message : 'Failed to parse CSV');
+      }
     };
     reader.readAsText(file);
 

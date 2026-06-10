@@ -131,6 +131,13 @@ function parseNames(raw: string): ParsedStudent[] {
   }));
 }
 
+const MAX_CSV_ROWS = 500;
+const MAX_FIELD_LENGTH = 100;
+
+function clampField(s: string): string {
+  return s.slice(0, MAX_FIELD_LENGTH);
+}
+
 function parseCSV(text: string): ParsedStudent[] {
   const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   if (lines.length < 2) return [];
@@ -142,15 +149,15 @@ function parseCSV(text: string): ParsedStudent[] {
   const firstIdx = headers.findIndex((h) => h === 'first' || h === 'first name' || h === 'firstname');
   const lastIdx = headers.findIndex((h) => h === 'last' || h === 'last name' || h === 'lastname');
 
-  const dataRows = lines.slice(1);
+  const dataRows = lines.slice(1, MAX_CSV_ROWS + 1);
   let parsed: { firstName: string; lastName: string }[];
 
   if (firstIdx !== -1 && lastIdx !== -1) {
     parsed = dataRows.map((row) => {
       const cols = row.split(',').map((c) => c.trim().replace(/"/g, ''));
       return {
-        firstName: cols[firstIdx] ?? '',
-        lastName: cols[lastIdx] ?? '',
+        firstName: clampField(cols[firstIdx] ?? ''),
+        lastName: clampField(cols[lastIdx] ?? ''),
       };
     });
   } else if (nameIdx !== -1) {
@@ -159,11 +166,11 @@ function parseCSV(text: string): ParsedStudent[] {
       const full = cols[nameIdx] ?? '';
       const lastSpace = full.lastIndexOf(' ');
       if (lastSpace === -1) {
-        return { firstName: full, lastName: '' };
+        return { firstName: clampField(full), lastName: '' };
       }
       return {
-        firstName: full.slice(0, lastSpace).trim(),
-        lastName: full.slice(lastSpace + 1).trim(),
+        firstName: clampField(full.slice(0, lastSpace).trim()),
+        lastName: clampField(full.slice(lastSpace + 1).trim()),
       };
     });
   } else {
@@ -173,11 +180,11 @@ function parseCSV(text: string): ParsedStudent[] {
       const full = cols[0] ?? '';
       const lastSpace = full.lastIndexOf(' ');
       if (lastSpace === -1) {
-        return { firstName: full, lastName: '' };
+        return { firstName: clampField(full), lastName: '' };
       }
       return {
-        firstName: full.slice(0, lastSpace).trim(),
-        lastName: full.slice(lastSpace + 1).trim(),
+        firstName: clampField(full.slice(0, lastSpace).trim()),
+        lastName: clampField(full.slice(lastSpace + 1).trim()),
       };
     });
   }
@@ -317,19 +324,21 @@ export function ClassForm({ onComplete, onCancel, editingClass }: ClassFormProps
         });
         onComplete(editingClass.id);
       } else {
-        // Create new class + students in a single batch
-        const batch = writeBatch(db);
+        // Create the class document first — Firestore security rules for the
+        // students subcollection use get() on the parent class doc, which must
+        // already exist before students can be written.
         const classRef = doc(collection(db, 'classes'));
-
-        batch.set(classRef, {
+        await setDoc(classRef, {
           teacherId: user.uid,
           name: name.trim(),
           gradeLevel,
           subject: effectiveSubject.trim(),
+          studentCount: students.length,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
 
+        const batch = writeBatch(db);
         for (const student of students) {
           const studentRef = doc(collection(db, 'classes', classRef.id, 'students'));
           batch.set(studentRef, {
@@ -340,8 +349,8 @@ export function ClassForm({ onComplete, onCancel, editingClass }: ClassFormProps
             createdAt: serverTimestamp(),
           });
         }
-
         await batch.commit();
+
         toast('success', `Class "${name.trim()}" created with ${students.length} students.`);
         onComplete(classRef.id);
       }

@@ -23,6 +23,14 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Secrets & credentials
+.env.production
+*.pem
+*.key
+*.p12
+id_rsa
+serviceAccount*.json
+
 # OS
 .DS_Store
 Thumbs.db

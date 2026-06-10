@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +52,15 @@ const RETRY_DELAY_MS = 1000;
 const TRANSIENT_STATUS_CODES = new Set([500, 502, 503, 504, 429]);
 
 // ---------------------------------------------------------------------------
+// Firestore model config validation
+// ---------------------------------------------------------------------------
+
+const ModelConfigSchema = z.object({
+  modelId: z.string().min(1),
+  requiresVision: z.boolean(),
+});
+
+// ---------------------------------------------------------------------------
 // Firestore model config reader
 // ---------------------------------------------------------------------------
 
@@ -70,14 +80,17 @@ export async function getModelConfig(fn: PipelineFunction): Promise<ModelConfig>
   const data = docSnap.data();
   const entry = data?.models?.[fn];
 
-  if (!entry?.modelId) {
+  if (!entry) {
     return DEFAULT_CONFIGS[fn];
   }
 
-  return {
-    modelId: entry.modelId as string,
-    requiresVision: entry.requiresVision === true,
-  };
+  const result = ModelConfigSchema.safeParse(entry);
+  if (!result.success) {
+    console.warn(`Invalid model config for ${fn}, using defaults:`, result.error.message);
+    return DEFAULT_CONFIGS[fn];
+  }
+
+  return result.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,8 +156,10 @@ async function sendRequest(
   if (!response.ok) {
     const isTransient = TRANSIENT_STATUS_CODES.has(response.status);
     const errorText = await response.text().catch(() => '');
+    // Sanitize error text — never include the API key in error messages
+    const sanitized = errorText.includes(apiKey) ? '[redacted]' : errorText;
     const err = new OpenRouterError(
-      `OpenRouter request failed: ${response.status} ${response.statusText} — ${errorText}`,
+      `OpenRouter request failed: ${response.status} ${response.statusText} — ${sanitized}`,
       response.status,
       isTransient,
     );

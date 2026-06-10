@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAnalysisContext } from '@/components/layout/AnalysisLayout';
 
 function masteryColor(score: number) {
@@ -33,6 +33,7 @@ type SortDir = 'asc' | 'desc';
 
 export default function StudentList() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { analysis } = useAnalysisContext();
   const { studentInsights } = analysis;
 
@@ -87,14 +88,15 @@ export default function StudentList() {
         </thead>
         <tbody className="divide-y divide-border/50">
           {sortedStudents.map((s) => (
-            <tr key={s.studentId} className="hover:bg-muted/50 transition-colors">
+            <tr
+              key={s.studentId}
+              className="hover:bg-muted/50 transition-colors cursor-pointer"
+              onClick={() => navigate(`/analysis/${id}/student/${s.studentId}`)}
+            >
               <td className="px-4 py-2.5">
-                <Link
-                  to={`/analysis/${id}/student/${s.studentId}`}
-                  className="font-medium text-primary hover:text-primary"
-                >
+                <span className="font-medium text-primary">
                   {s.studentName}
-                </Link>
+                </span>
               </td>
               <td
                 className={`px-4 py-2.5 text-right font-semibold ${masteryColor(s.totalScore)}`}

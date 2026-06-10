@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { ClassForm } from '@/components/ClassForm';
 import {
   Plus,
   ClipboardList,
@@ -19,6 +20,7 @@ import {
   Check,
   ChevronDown,
   Upload,
+  X,
 } from 'lucide-react';
 import { GuidanceTip } from '@/components/ux/GuidanceTip';
 import { NextStepCard } from '@/components/ux/NextStepCard';
@@ -50,6 +52,7 @@ interface Assignment {
 interface ClassDoc {
   id: string;
   name: string;
+  studentCount?: number;
 }
 
 type DateRange = 'all' | 'week' | 'month' | 'semester';
@@ -296,6 +299,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const [rangeDropdownOpen, setRangeDropdownOpen] = useState(false);
+  const [showAddClass, setShowAddClass] = useState(false);
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+
+  function toggleCollapsed(classId: string) {
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev);
+      if (next.has(classId)) next.delete(classId);
+      else next.add(classId);
+      return next;
+    });
+  }
 
   // Read filters from URL
   const selectedClassId = searchParams.get('class') ?? 'all';
@@ -324,7 +338,14 @@ export default function Dashboard() {
     );
     const unsub = onSnapshot(q, (snap) => {
       setClasses(
-        snap.docs.map((d) => ({ id: d.id, name: d.data().name as string }))
+        snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: data.name as string,
+            studentCount: (data.studentCount as number) || undefined,
+          };
+        })
       );
       setClassesLoaded(true);
     });
@@ -419,6 +440,18 @@ export default function Dashboard() {
 
   const hasFilters = selectedClassId !== 'all' || selectedRange !== 'all';
 
+  const groupedByClass = useMemo(() => {
+    const classesToShow =
+      selectedClassId === 'all'
+        ? classes
+        : classes.filter((c) => c.id === selectedClassId);
+
+    return classesToShow.map((cls) => ({
+      classDoc: cls,
+      classAssignments: filteredAssignments.filter((a) => a.classId === cls.id),
+    }));
+  }, [classes, filteredAssignments, selectedClassId]);
+
   // ---------------------------------------------------------------------------
   // Date range options
   // ---------------------------------------------------------------------------
@@ -487,14 +520,24 @@ export default function Dashboard() {
 
       {/* Header row: CTA + filters inline on desktop */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <Link
-          to="/analysis/new"
-          data-tour="new-analysis"
-          className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-lg px-8 py-3 rounded-full font-semibold tracking-wide hover:bg-primary/90 transition-colors w-full sm:w-auto justify-center"
-        >
-          <Plus className="w-5 h-5" />
-          New Analysis
-        </Link>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Link
+            to="/analysis/new"
+            data-tour="new-analysis"
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground text-lg px-8 py-3 rounded-full font-semibold tracking-wide hover:bg-primary/90 transition-colors flex-1 sm:flex-initial justify-center"
+          >
+            <Plus className="w-5 h-5" />
+            New Analysis
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowAddClass(true)}
+            className="inline-flex items-center gap-2 border-2 border-primary text-primary text-sm px-4 py-3 rounded-full font-semibold hover:bg-primary/10 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Class
+          </button>
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Class dropdown */}
@@ -601,15 +644,92 @@ export default function Dashboard() {
       ) : filteredAssignments.length === 0 ? (
         <EmptyState hasFilters={hasFilters} />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {filteredAssignments.map((a) => (
-            <AnalysisCard
-              key={a.id}
-              assignment={a}
-              className={classMap[a.classId] ?? 'Unknown Class'}
-              pendingInterventions={interventionCounts[a.id] ?? 0}
+        <div className="space-y-6">
+          {groupedByClass.map(({ classDoc, classAssignments }) => {
+            const isCollapsed = collapsedClasses.has(classDoc.id);
+            return (
+              <div key={classDoc.id}>
+                <button
+                  type="button"
+                  onClick={() => toggleCollapsed(classDoc.id)}
+                  className="flex items-center gap-2 w-full text-left mb-3 group"
+                >
+                  <ChevronDown
+                    className={`w-4 h-4 text-muted-foreground transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                  />
+                  <h3 className="font-heading text-base font-semibold text-foreground">
+                    {classDoc.name}
+                  </h3>
+                  {classDoc.studentCount && (
+                    <span className="text-xs text-muted-foreground">
+                      &middot; {classDoc.studentCount} students
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {classAssignments.length}{' '}
+                    {classAssignments.length === 1 ? 'analysis' : 'analyses'}
+                  </span>
+                </button>
+
+                {!isCollapsed && (
+                  classAssignments.length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pl-6">
+                      {classAssignments.map((a) => (
+                        <AnalysisCard
+                          key={a.id}
+                          assignment={a}
+                          className={classDoc.name}
+                          pendingInterventions={interventionCounts[a.id] ?? 0}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="pl-6 py-4">
+                      <p className="text-sm text-muted-foreground">
+                        No analyses yet.{' '}
+                        <Link
+                          to="/analysis/new"
+                          className="text-primary hover:text-primary/80 font-medium"
+                        >
+                          Start one &rarr;
+                        </Link>
+                      </p>
+                    </div>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add Class modal */}
+      {showAddClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowAddClass(false)}
+          />
+          <div className="relative bg-card border border-border rounded-[--radius-md] shadow-[--shadow-lg] w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-heading text-lg font-semibold text-foreground">
+                Add a New Class
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddClass(false)}
+                className="p-1 text-muted-foreground hover:text-foreground rounded"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <ClassForm
+              onComplete={() => {
+                setShowAddClass(false);
+              }}
+              onCancel={() => setShowAddClass(false)}
             />
-          ))}
+          </div>
         </div>
       )}
     </div>

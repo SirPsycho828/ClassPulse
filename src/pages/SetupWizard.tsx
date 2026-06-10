@@ -154,6 +154,7 @@ function StepClassSelection({
   onClassCreated: (id: string, name: string, count: number) => void;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [showNewClassForm, setShowNewClassForm] = useState(false);
 
   // No classes: show form directly
   if (!loadingClasses && classes.length === 0) {
@@ -192,23 +193,46 @@ function StepClassSelection({
       ) : (
         <>
           {autoSelected && !showForm ? (
-            <div className="bg-primary/10 border border-primary/20 rounded-[--radius-md] p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {classes[0].className}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {classes[0].studentCount} students
-                </p>
+            <>
+              <div className="bg-primary/10 border border-primary/20 rounded-[--radius-md] p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {classes[0].className}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {classes[0].studentCount} students
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(true)}
+                    className="text-sm text-primary hover:text-primary font-medium"
+                  >
+                    Change class
+                  </button>
+                  <span className="text-border">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewClassForm(true)}
+                    className="text-sm text-primary hover:text-primary font-medium"
+                  >
+                    + Add new
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowForm(true)}
-                className="text-sm text-primary hover:text-primary font-medium"
-              >
-                Change class
-              </button>
-            </div>
+              {showNewClassForm && (
+                <div className="mt-4 p-4 bg-muted/50 rounded-[--radius-md] border border-border">
+                  <ClassForm
+                    onCreated={(id, name, count) => {
+                      setShowNewClassForm(false);
+                      onClassCreated(id, name, count);
+                    }}
+                    onCancel={() => setShowNewClassForm(false)}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <>
               <select

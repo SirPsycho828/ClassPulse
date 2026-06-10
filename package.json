@@ -2,11 +2,17 @@
   "name": "classpulse",
   "private": true,
   "version": "0.0.0",
+  "description": "AI-powered quiz analysis tool for K-12 teachers — photograph quizzes, extract student responses, and get actionable classroom insights.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SirPsycho828/ClassPulse"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -35,6 +41,7 @@
     "globals": "^17.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
+    "vitest": "^3.2.4",
     "vite": "^8.0.12",
     "vite-plugin-pwa": "^1.3.0"
   }

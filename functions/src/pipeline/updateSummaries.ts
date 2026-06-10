@@ -1,7 +1,5 @@
 import * as admin from 'firebase-admin';
 
-const db = admin.firestore();
-
 type Trend = 'up' | 'down' | 'flat';
 
 function computeTrend(scores: number[]): Trend {
@@ -42,6 +40,8 @@ export async function updateSummaries(
   classId: string,
   teacherId: string,
 ): Promise<void> {
+  const db = admin.firestore();
+
   // 1. Fetch all analyses for this class, ordered by date
   const analysesSnap = await db
     .collection('analyses')

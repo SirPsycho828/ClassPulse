@@ -786,11 +786,19 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
     setProcessing(true);
     try {
       let extractedStudents: object[];
-      let answerKey: string[] | null = null;
+      let answerKey: Array<{ questionNumber: number; correctAnswer: string; points: number }> | null = null;
 
       if (assignmentType === 'objective') {
         // Build answer key from detected answer key row
-        answerKey = questionColIndices.map((idx) => answerKeyRow![idx]?.trim() ?? '');
+        answerKey = questionColIndices.map((colIdx, i) => {
+          const header = headers[colIdx];
+          const num = parseInt(header.replace(/\D/g, ''), 10) || (i + 1);
+          return {
+            questionNumber: num,
+            correctAnswer: answerKeyRow![colIdx]?.trim() ?? '',
+            points: 1,
+          };
+        });
 
         // Filter out the answer key row from student data
         extractedStudents = allRows
@@ -798,10 +806,14 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
           .filter((row) => row[nameColIndex]?.trim())
           .map((row, i) => {
             const rawName = row[nameColIndex]?.trim() ?? '';
-            const answers = questionColIndices.map((idx, qNum) => ({
-              questionNumber: qNum + 1,
-              answer: row[idx]?.trim() ?? '',
-            }));
+            const answers = questionColIndices.map((colIdx, i) => {
+              const header = headers[colIdx];
+              const num = parseInt(header.replace(/\D/g, ''), 10) || (i + 1);
+              return {
+                questionNumber: num,
+                answer: row[colIdx]?.trim() ?? '',
+              };
+            });
 
             return {
               extractionIndex: i,

@@ -15,7 +15,8 @@ export interface ClassDetailOutletContext {
   gradeLevel: string;
   subject: string;
   studentCount: number;
-  analyses: Array<AnalysisResult & { assignmentTitle: string }>;
+  analyses: Array<AnalysisResult & { assignmentTitle: string; docId: string }>;
+  refreshAnalyses: () => void;
 }
 
 export function useClassDetailContext() {
@@ -40,7 +41,12 @@ export default function ClassDetailLayout() {
   const [gradeLevel, setGradeLevel] = useState('');
   const [subject, setSubject] = useState('');
   const [studentCount, setStudentCount] = useState(0);
-  const [analyses, setAnalyses] = useState<Array<AnalysisResult & { assignmentTitle: string }>>([]);
+  const [analyses, setAnalyses] = useState<Array<AnalysisResult & { assignmentTitle: string; docId: string }>>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  function refreshAnalyses() {
+    setRefreshKey((k) => k + 1);
+  }
 
   useEffect(() => {
     if (!classId || !user) return;
@@ -71,7 +77,7 @@ export default function ClassDetailLayout() {
         );
 
         // For each analysis, fetch the assignment title
-        const analysesWithTitles: Array<AnalysisResult & { assignmentTitle: string }> = [];
+        const analysesWithTitles: Array<AnalysisResult & { assignmentTitle: string; docId: string }> = [];
         for (const aDoc of analysesSnap.docs) {
           const aData = aDoc.data() as AnalysisResult;
           let assignmentTitle = 'Untitled';
@@ -83,7 +89,7 @@ export default function ClassDetailLayout() {
           } catch {
             // ignore
           }
-          analysesWithTitles.push({ ...aData, assignmentTitle });
+          analysesWithTitles.push({ ...aData, assignmentTitle, docId: aDoc.id });
         }
 
         setAnalyses(analysesWithTitles);
@@ -96,7 +102,7 @@ export default function ClassDetailLayout() {
     }
 
     loadData();
-  }, [classId, user, toast, navigate]);
+  }, [classId, user, toast, navigate, refreshKey]);
 
   if (loading) {
     return (
@@ -123,6 +129,7 @@ export default function ClassDetailLayout() {
     subject,
     studentCount,
     analyses,
+    refreshAnalyses,
   };
 
   return (

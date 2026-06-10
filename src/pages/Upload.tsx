@@ -889,7 +889,9 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Upload a CSV, TSV, or spreadsheet file with student names and scores (max 5 MB).
+        {assignmentType === 'objective'
+          ? 'Upload a CSV with student names and per-question answers (Q1, Q2...). Include an ANSWER KEY row with correct answers.'
+          : 'Upload a CSV, TSV, or spreadsheet file with student names and scores (max 5 MB).'}
       </p>
 
       {/* Drop zone or file info */}
@@ -920,7 +922,7 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
             <Download className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Not sure about the format?</span>
             <a
-              href="/classpulse-csv-template.csv"
+              href={assignmentType === 'objective' ? '/classpulse-csv-template-detailed.csv' : '/classpulse-csv-template.csv'}
               download
               className="text-primary hover:underline font-medium"
             >

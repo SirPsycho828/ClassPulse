@@ -84,7 +84,7 @@ export const onUserCreate = beforeUserCreated(async (event) => {
 // ---------------------------------------------------------------------------
 
 export const runExtraction = onCall(
-  { timeoutSeconds: 300, secrets: ['OPENROUTER_API_KEY'] },
+  { timeoutSeconds: 540, memory: '512MiB', secrets: ['OPENROUTER_API_KEY'] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
     const { assignmentId } = request.data as { assignmentId: string };
@@ -93,7 +93,9 @@ export const runExtraction = onCall(
     const assignmentDoc = await verifyOwnership(assignmentId, request.auth.uid);
     const assignment = assignmentDoc.data()!;
 
-    await db.collection('assignments').doc(assignmentId).update({
+    const assignmentRef = db.collection('assignments').doc(assignmentId);
+
+    await assignmentRef.update({
       status: 'extracting',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -107,69 +109,107 @@ export const runExtraction = onCall(
         assignmentType = 'pathA_detailed';
       }
 
-      // Build prompt
+      const bucket = admin.storage().bucket();
+      const rawPaths: string[] = assignment.imageUrls || [];
+
+      // Normalize: if a value is a full download URL, extract the storage path
+      const imagePaths = rawPaths.map((p) => {
+        if (p.startsWith('https://')) {
+          const match = p.match(/\/o\/([^?]+)/);
+          if (match) return decodeURIComponent(match[1]);
+        }
+        return p;
+      });
+
+      console.log(`[runExtraction] Processing ${imagePaths.length} images one at a time...`);
+      const startTime = Date.now();
+
+      // Build base prompt (reused for each image)
       const promptMessages = buildExtractionPrompt(
         assignmentType,
         assignment.questionCount || 0,
         assignment.answerKey || null,
-        (assignment.imageUrls || []).length,
+        1, // one image at a time
       );
-
-      // Download images from Storage and build vision content parts
-      const bucket = admin.storage().bucket();
-      const imageUrls: string[] = assignment.imageUrls || [];
-      const imageParts: Array<{ type: string; image_url: { url: string } }> = [];
-
-      for (const imagePath of imageUrls) {
-        const file = bucket.file(imagePath);
-        const [buffer] = await file.download();
-        const base64 = buffer.toString('base64');
-        const [metadata] = await file.getMetadata();
-        const contentType = metadata.contentType || 'image/jpeg';
-        imageParts.push({
-          type: 'image_url',
-          image_url: { url: `data:${contentType};base64,${base64}` },
-        });
-      }
-
-      // Combine text prompt with image content parts for vision
       const userMessage = promptMessages.find((m) => m.role === 'user');
       const systemMessage = promptMessages.find((m) => m.role === 'system');
 
-      const messages: Array<{ role: string; content: string | Array<unknown> }> = [];
-      if (systemMessage) {
-        messages.push({ role: 'system', content: systemMessage.content as string });
-      }
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text: userMessage?.content as string || '' },
-          ...imageParts,
-        ],
-      });
+      // Process each image individually: download → extract → discard
+      const allExtractedStudents: Array<Record<string, unknown>> = [];
 
-      const startTime = Date.now();
-      const response = await callOpenRouter('extraction', messages);
+      for (let i = 0; i < imagePaths.length; i++) {
+        // Update progress
+        await assignmentRef.update({
+          status: 'extracting',
+          'pipelineState.extractionProgress': {
+            phase: 'extracting',
+            current: i + 1,
+            total: imagePaths.length,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        console.log(`[runExtraction] Processing image ${i + 1}/${imagePaths.length}...`);
+
+        // Download single image
+        const file = bucket.file(imagePaths[i]);
+        const [[buffer], [metadata]] = await Promise.all([
+          file.download(),
+          file.getMetadata(),
+        ]);
+        const base64 = buffer.toString('base64');
+        const contentType = metadata.contentType || 'image/jpeg';
+
+        // Build vision message for this single image
+        const messages: Array<{ role: string; content: string | Array<unknown> }> = [];
+        if (systemMessage) {
+          messages.push({ role: 'system', content: systemMessage.content as string });
+        }
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: userMessage?.content as string || '' },
+            { type: 'image_url', image_url: { url: `data:${contentType};base64,${base64}` } },
+          ],
+        });
+
+        // Call vision AI for this one image
+        const response = await callOpenRouter('extraction', messages);
+
+        // Parse result
+        let parsed;
+        try {
+          let content = response.content;
+          if (content.startsWith('```')) {
+            content = content.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+          }
+          parsed = JSON.parse(content);
+        } catch {
+          console.warn(`[runExtraction] Failed to parse response for image ${i + 1}, skipping`);
+          continue;
+        }
+
+        // Collect extracted students from this image
+        const students = parsed.extractedStudents || [parsed];
+        for (const s of students) {
+          allExtractedStudents.push({ ...s, sourceImageIndex: i });
+        }
+      }
+
       const processingTimeMs = Date.now() - startTime;
+      console.log(`[runExtraction] Extracted ${allExtractedStudents.length} students from ${imagePaths.length} images in ${Math.round(processingTimeMs / 1000)}s`);
 
-      // Parse extraction result
-      let extractionResult;
-      try {
-        extractionResult = JSON.parse(response.content);
-      } catch {
-        throw new HttpsError('internal', 'Failed to parse extraction response');
-      }
-
-      // Normalize the extraction result
+      // Normalize all extracted students
       const extractionId = generateId();
       const normalizedResult = {
         extractionId,
         assignmentId,
         sourceType: 'image',
-        extractedStudents: (extractionResult.extractedStudents || []).map(
+        extractedStudents: allExtractedStudents.map(
           (s: Record<string, unknown>, i: number) => ({
             extractionIndex: i,
             sourceImageIndex: (s.sourceImageIndex as number) || 0,
+            sourceImagePath: imagePaths[(s.sourceImageIndex as number) || 0] || '',
             rawName: ((s.rawName as string) || '').trim(),
             nameConfidence: clampConfidence(s.nameConfidence as number),
             answers: (s.answers as Array<Record<string, unknown>> || []).map(
@@ -193,14 +233,20 @@ export const runExtraction = onCall(
           }),
         ),
         metadata: {
-          totalExtracted: (extractionResult.extractedStudents || []).length,
-          imagesProcessed: imageUrls.length,
-          partialPapersDetected: extractionResult.metadata?.partialPapersDetected || false,
+          totalExtracted: allExtractedStudents.length,
+          imagesProcessed: imagePaths.length,
+          partialPapersDetected: false,
           processingTimeMs,
         },
       };
 
       // Run roster matching
+      console.log(`[runExtraction] Matching ${normalizedResult.extractedStudents.length} students to roster...`);
+      await assignmentRef.update({
+        status: 'matching',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       const roster = await getRoster(assignment.classId);
       const extractedNames = normalizedResult.extractedStudents.map(
         (s: { extractionIndex: number; rawName: string }) => ({
@@ -211,7 +257,7 @@ export const runExtraction = onCall(
       const rosterMatchResult = matchRoster(extractedNames, roster, 0.7);
 
       // Write to pipelineState
-      await db.collection('assignments').doc(assignmentId).update({
+      await assignmentRef.update({
         'pipelineState.extractionResult': normalizedResult,
         'pipelineState.rosterMatchResult': rosterMatchResult,
         status: 'needs_review',
@@ -220,7 +266,7 @@ export const runExtraction = onCall(
 
       return { success: true };
     } catch (err: unknown) {
-      await db.collection('assignments').doc(assignmentId).update({
+      await assignmentRef.update({
         status: 'error',
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -399,67 +445,76 @@ export const submitValidation = onCall(async (request) => {
   if (!assignmentId) throw new HttpsError('invalid-argument', 'assignmentId required');
   if (!validatedResult) throw new HttpsError('invalid-argument', 'validatedResult required');
 
-  const assignmentDoc = await verifyOwnership(assignmentId, request.auth.uid);
-  const assignment = assignmentDoc.data()!;
+  try {
+    const assignmentDoc = await verifyOwnership(assignmentId, request.auth.uid);
+    const assignment = assignmentDoc.data()!;
 
-  const validationId = generateId();
-  const fullValidatedResult = {
-    validationId,
-    assignmentId,
-    ...validatedResult,
-  };
+    const validationId = generateId();
+    const fullValidatedResult = {
+      validationId,
+      assignmentId,
+      ...validatedResult,
+    };
 
-  // Save alias corrections to roster student docs
-  for (const student of validatedResult.validatedStudents) {
-    for (const correction of student.corrections) {
-      if (correction.savedAsAlias && correction.field === 'name') {
-        await db
-          .collection('classes')
-          .doc(assignment.classId)
-          .collection('students')
-          .doc(student.studentId)
-          .update({
-            knownAliases: admin.firestore.FieldValue.arrayUnion(correction.originalValue),
-          });
+    // Save alias corrections to roster student docs
+    for (const student of validatedResult.validatedStudents) {
+      for (const correction of student.corrections || []) {
+        if (correction.savedAsAlias && correction.field === 'name') {
+          await db
+            .collection('classes')
+            .doc(assignment.classId)
+            .collection('students')
+            .doc(student.studentId)
+            .update({
+              knownAliases: admin.firestore.FieldValue.arrayUnion(correction.originalValue),
+            });
+        }
       }
     }
+
+    // If Path B, run grading
+    let gradedResult = null;
+    if (assignment.type === 'objective' && assignment.answerKey) {
+      const answerKeyQuestions: AnswerKeyQuestion[] = (assignment.answerKey.questions || []).map(
+        (q: Record<string, unknown>) => ({
+          questionNumber: q.questionNumber as number,
+          questionText: (q.questionText as string) || null,
+          correctAnswer: q.correctAnswer as string,
+          answerChoices: (q.answerChoices as string[]) || null,
+          points: (q.points as number) || 1,
+          extraCredit: (q.extraCredit as boolean) || false,
+        }),
+      );
+
+      const studentsForGrading = validatedResult.validatedStudents.map((s) => ({
+        studentId: s.studentId,
+        answers: (s.answers || []).map((a: Record<string, unknown>) => ({
+          questionNumber: a.questionNumber as number,
+          answer: (a.answer as string) || (a.extractedAnswer as string) || '',
+        })),
+      }));
+
+      gradedResult = gradeStudents(studentsForGrading, answerKeyQuestions);
+      gradedResult.assignmentId = assignmentId;
+    }
+
+    const updateData: Record<string, unknown> = {
+      'pipelineState.validatedResult': fullValidatedResult,
+      status: 'analyzing',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (gradedResult) {
+      updateData['pipelineState.gradedResult'] = gradedResult;
+    }
+
+    await db.collection('assignments').doc(assignmentId).update(updateData);
+
+    return { success: true };
+  } catch (err: unknown) {
+    if (err instanceof HttpsError) throw err;
+    console.error('[submitValidation] Error:', err);
+    throw new HttpsError('internal', 'Validation failed');
   }
-
-  // If Path B, run grading
-  let gradedResult = null;
-  if (assignment.type === 'objective' && assignment.answerKey) {
-    const answerKeyQuestions: AnswerKeyQuestion[] = (assignment.answerKey.questions || []).map(
-      (q: Record<string, unknown>) => ({
-        questionNumber: q.questionNumber as number,
-        questionText: (q.questionText as string) || null,
-        correctAnswer: q.correctAnswer as string,
-        answerChoices: (q.answerChoices as string[]) || null,
-        points: (q.points as number) || 1,
-        extraCredit: (q.extraCredit as boolean) || false,
-      }),
-    );
-
-    const studentsForGrading = validatedResult.validatedStudents.map((s) => ({
-      studentId: s.studentId,
-      answers: s.answers,
-    }));
-
-    gradedResult = gradeStudents(studentsForGrading, answerKeyQuestions);
-    gradedResult.assignmentId = assignmentId;
-  }
-
-  const updateData: Record<string, unknown> = {
-    'pipelineState.validatedResult': fullValidatedResult,
-    status: 'analyzing',
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
-  if (gradedResult) {
-    updateData['pipelineState.gradedResult'] = gradedResult;
-  }
-
-  await db.collection('assignments').doc(assignmentId).update(updateData);
-
-  return { success: true };
 });
 
 // ---------------------------------------------------------------------------
@@ -488,8 +543,50 @@ export const runAnalysis = onCall(
     });
 
     try {
-      const validatedStudents = validatedResult.validatedStudents || [];
+      let validatedStudents = validatedResult.validatedStudents || [];
       const gradedResult = pipelineState.gradedResult || null;
+
+      // When graded results exist, replace extraction score estimates with actual graded scores
+      if (gradedResult?.gradedStudents) {
+        const gradedMap = new Map<string, number>();
+        for (const gs of gradedResult.gradedStudents) {
+          gradedMap.set(gs.studentId, gs.total?.normalized ?? 0);
+        }
+        validatedStudents = validatedStudents.map((s: { studentId: string; totalScore: { normalized: number }; [key: string]: unknown }) => ({
+          ...s,
+          totalScore: {
+            ...s.totalScore,
+            normalized: gradedMap.has(s.studentId) ? gradedMap.get(s.studentId)! : s.totalScore.normalized,
+          },
+        }));
+      }
+
+      // Resolve sourceImagePath from extraction data if not already set on validated students
+      const imageUrls: string[] = assignment.imageUrls || [];
+      const imagePaths = imageUrls.map((p: string) => {
+        if (p.startsWith('https://')) {
+          const match = p.match(/\/o\/([^?]+)/);
+          if (match) return decodeURIComponent(match[1]);
+        }
+        return p;
+      });
+      const extractionStudents = pipelineState.extractionResult?.extractedStudents || [];
+      for (const vs of validatedStudents) {
+        if (!vs.sourceImagePath) {
+          // Find the extraction student by matching extractionIndex or studentId
+          const es = extractionStudents.find(
+            (e: { extractionIndex: number; sourceImageIndex: number }) =>
+              e.extractionIndex === vs.extractionIndex,
+          ) || extractionStudents.find(
+            (e: { rawName: string }) => e.rawName === vs.rosterName,
+          );
+          if (es) {
+            const idx = es.sourceImageIndex ?? es.extractionIndex ?? 0;
+            vs.sourceImagePath = imagePaths[idx] || '';
+          }
+        }
+      }
+
       const hasPerQuestionData =
         validatedStudents.some(
           (s: { answers?: unknown[] }) => s.answers && s.answers.length > 0,
@@ -561,7 +658,11 @@ export const runAnalysis = onCall(
             );
             skillUsage = skillResponse.usage;
 
-            const parsed = JSON.parse(skillResponse.content);
+            let skillContent = skillResponse.content;
+            if (skillContent.startsWith('```')) {
+              skillContent = skillContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+            }
+            const parsed = JSON.parse(skillContent);
             skillInferenceResult = {
               assignmentId,
               skillMapping: parsed.skillMapping || [],
@@ -598,6 +699,7 @@ export const runAnalysis = onCall(
       // ---------------------------------------------------------------
       // Stage 2: Compute class statistics
       // ---------------------------------------------------------------
+      console.log('[runAnalysis] Stage 2: Computing class statistics...');
       const scores = validatedStudents.map(
         (s: { totalScore: { normalized: number } }) => s.totalScore.normalized,
       );
@@ -749,15 +851,23 @@ export const runAnalysis = onCall(
         classContext,
       );
 
+      console.log('[runAnalysis] Stage 3: Calling analysis AI model...');
       const analysisResponse = await callOpenRouter(
         'analysis',
         analysisMessages as Array<{ role: string; content: string | Array<unknown> }>,
       );
+      console.log('[runAnalysis] Stage 3 complete, parsing response...');
 
       let aiResult;
       try {
-        aiResult = JSON.parse(analysisResponse.content);
+        // Strip markdown code fences if present
+        let content = analysisResponse.content;
+        if (content.startsWith('```')) {
+          content = content.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+        }
+        aiResult = JSON.parse(content);
       } catch {
+        console.error('[runAnalysis] Failed to parse analysis response:', analysisResponse.content?.substring(0, 200));
         throw new HttpsError('internal', 'Failed to parse analysis response');
       }
 
@@ -798,7 +908,15 @@ export const runAnalysis = onCall(
                 masteryLevel: sm.masteryLevel,
                 studentsStrugglingCount: sm.studentsStrugglingCount,
                 studentsProficientCount: sm.studentsProficientCount,
-                commonWrongAnswers: aiBreakdown?.commonWrongAnswers || [],
+                commonWrongAnswers: (aiBreakdown?.commonWrongAnswers || []).map(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (cwa: any) => ({
+                    answerValue: cwa.answerValue || cwa.answer || '',
+                    frequency: cwa.frequency || 0,
+                    frequencyPercent: cwa.frequencyPercent || 0,
+                    misconception: cwa.misconception || '',
+                  }),
+                ),
               };
             },
           )
@@ -811,6 +929,7 @@ export const runAnalysis = onCall(
           studentId: string;
           rosterName: string;
           totalScore: { normalized: number };
+          sourceImagePath?: string;
         }) => {
           const score = s.totalScore.normalized;
           const percentile =
@@ -870,6 +989,8 @@ export const runAnalysis = onCall(
             skillPerformance,
             gapAreas,
             wrongAnswerAnalysis: aiInsight?.wrongAnswerAnalysis || [],
+            interventionPlan: aiInsight?.interventionPlan || null,
+            sourceImagePath: s.sourceImagePath || null,
           };
         },
       );
@@ -990,8 +1111,10 @@ export const runAnalysis = onCall(
       await usageBatch.commit();
 
       // Stage 8: Update assignment status
+      console.log('[runAnalysis] Stage 8: Marking assignment complete...');
       await db.collection('assignments').doc(assignmentId).update({
         status: 'complete',
+        analysisId,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 

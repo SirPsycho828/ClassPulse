@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { useToast } from '@/components/ui/Toast';
@@ -108,6 +108,9 @@ export default function AdminModels() {
   const [changingFunction, setChangingFunction] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const PAGE_SIZE = 25;
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // Detect unsaved changes
   const hasChanges = useMemo(
@@ -249,6 +252,35 @@ export default function AdminModels() {
 
     return result;
   }, [models, searchQuery, filterVision, filterFree, filterFavorites, favorites]);
+
+  // Reset visible count when filters change
+  useEffect(() => {
+    setDisplayCount(PAGE_SIZE);
+  }, [searchQuery, filterVision, filterFree, filterFavorites]);
+
+  const visibleModels = useMemo(
+    () => filteredModels.slice(0, displayCount),
+    [filteredModels, displayCount],
+  );
+
+  const hasMore = displayCount < filteredModels.length;
+
+  const sentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (observerRef.current) observerRef.current.disconnect();
+      if (!node) return;
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            setDisplayCount((prev) => Math.min(prev + PAGE_SIZE, filteredModels.length));
+          }
+        },
+        { threshold: 0.1 },
+      );
+      observerRef.current.observe(node);
+    },
+    [filteredModels.length],
+  );
 
   // ---- loading ----
   if (loading) {
@@ -515,7 +547,7 @@ export default function AdminModels() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {filteredModels.map((model) => (
+                {visibleModels.map((model) => (
                   <tr
                     key={model.id}
                     className="hover:bg-muted/50 transition-colors"
@@ -593,10 +625,17 @@ export default function AdminModels() {
               No models match your filters.
             </div>
           )}
+
+          {hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-xs text-muted-foreground">Loading more models...</span>
+            </div>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground mt-2">
-          {models.length} models loaded. Prices per 1M tokens.
+          Showing {visibleModels.length} of {filteredModels.length} models. Prices per 1M tokens.
         </p>
       </section>
     </div>

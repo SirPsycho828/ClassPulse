@@ -491,6 +491,15 @@ function buildAnalysisResponseSchema(hasSkillData: boolean): string {
   ],`
     : '  "skillBreakdown": [],';
 
+  const interventionPlanNote = `"interventionPlan": {
+        "summary": "1-2 sentences: what this specific student needs to work on and why, referencing their specific wrong answers",
+        "steps": [
+          "Step 1: A specific, actionable activity the teacher can do with this student (e.g., 'Review Q3 and Q7 together — ask the student to explain their approach to adding fractions')",
+          "Step 2: A follow-up practice activity (e.g., 'Have the student complete 5 fraction addition problems using visual fraction strips')",
+          "Step 3: A check for understanding (e.g., 'Give 2 new problems and ask the student to talk through each step aloud')"
+        ]
+      }`;
+
   const studentInsightsSchema = hasSkillData
     ? `  "studentInsights": [
     {
@@ -502,14 +511,16 @@ function buildAnalysisResponseSchema(hasSkillData: boolean): string {
           "misconception": "1-2 sentence explanation of this student's likely misunderstanding"
         }
       ],
-      "gapAreas": ["skillTag1", "skillTag2"]
+      "gapAreas": ["skillTag1", "skillTag2"],
+      ${interventionPlanNote}
     }
   ],`
     : `  "studentInsights": [
     {
       "studentId": "must match a student ID from the per-student data above",
       "wrongAnswerAnalysis": [],
-      "gapAreas": []
+      "gapAreas": [],
+      ${interventionPlanNote}
     }
   ],`;
 
@@ -554,7 +565,8 @@ CONSTRAINTS:
 - affectedStudentIds must contain ONLY student IDs listed as struggling with that skill above.
 - All studentId values in studentInsights must exactly match IDs from the per-student data.
 - Do not include numeric statistics in oneSentence or misconception text — the frontend displays the computed numbers separately.
-- gapAreas arrays must contain only skillTags that appear in the skill data above. Students with 100% total score must have empty gapAreas.`;
+- gapAreas arrays must contain only skillTags that appear in the skill data above. Students with 100% total score must have empty gapAreas.
+- interventionPlan: Generate for EVERY student who scored below 80%. For students at 80%+, set interventionPlan to null. The plan should be personalized — reference the student's specific wrong answers and misconceptions, not generic advice. Each step must be concrete and actionable (what the teacher physically does with the student).`;
 }
 
 // ---------------------------------------------------------------------------

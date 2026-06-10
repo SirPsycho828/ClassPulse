@@ -47,6 +47,7 @@ interface ReviewRow {
   candidates: { studentId: string; rosterName: string; confidence: number }[];
   answers: ExtractedStudent['answers'];
   totalScore: ExtractedStudent['totalScore'];
+  sourceImagePath: string;
   rememberAlias: boolean;
   isEditing: boolean;
   manualEntry: boolean;
@@ -151,6 +152,7 @@ export default function ReviewConfirm() {
               candidates: allCandidates,
               answers: es.answers,
               totalScore: es.totalScore,
+              sourceImagePath: es.sourceImagePath || '',
               rememberAlias: false,
               isEditing: false,
               manualEntry: false,
@@ -263,8 +265,12 @@ export default function ReviewConfirm() {
           rosterName: r.selectedRosterName ?? r.rawName,
           status: r.manualEntry ? 'manual_entry' : r.status === 'confirmed' ? 'teacher_confirmed' : 'auto_confirmed',
           rememberAlias: r.rememberAlias,
-          answers: r.answers,
+          answers: (r.answers || []).map((a) => ({
+            questionNumber: a.questionNumber,
+            answer: a.extractedAnswer ?? '',
+          })),
           totalScore: r.totalScore,
+          sourceImagePath: r.sourceImagePath,
         }));
 
       const excludedStudents = rows
@@ -274,13 +280,24 @@ export default function ReviewConfirm() {
       const submitValidation = httpsCallable(functions, 'submitValidation');
       await submitValidation({
         assignmentId: id,
-        validatedStudents,
-        excludedStudents,
-        absentStudents: unmatchedRoster,
+        validatedResult: {
+          validatedStudents: validatedStudents.map((s) => ({
+            ...s,
+            corrections: s.rememberAlias
+              ? [{ field: 'name', originalValue: s.rosterName, correctedValue: s.rosterName, savedAsAlias: true }]
+              : [],
+          })),
+          excludedStudents,
+          absentStudents: unmatchedRoster,
+        },
       });
 
+      // Trigger analysis (fire-and-forget — the analysis page monitors status via Firestore)
+      const runAnalysis = httpsCallable(functions, 'runAnalysis');
+      runAnalysis({ assignmentId: id }).catch((err) => console.error('runAnalysis error:', err));
+
       toast('success', 'Validation submitted. Analysis starting...');
-      navigate(`/analysis/${id}`);
+      navigate(`/analysis/${id}/upload`);
     } catch (err) {
       console.error(err);
       toast('error', 'Failed to submit validation. Please try again.');

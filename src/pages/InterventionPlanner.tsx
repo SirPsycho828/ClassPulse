@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult } from '@/lib/schemas';
 import {
@@ -90,8 +92,10 @@ type Intervention = AnalysisResult['interventions'][number];
 export default function InterventionPlanner() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [analysisDocId, setAnalysisDocId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [assignmentTitle, setAssignmentTitle] = useState('');
@@ -108,11 +112,12 @@ export default function InterventionPlanner() {
 
     async function loadData() {
       try {
-        const analysisDoc = await getDoc(doc(db, 'analyses', id!));
-        if (!analysisDoc.exists()) {
+        const analysisDoc = await resolveAnalysis(id!, user!.uid);
+        if (!analysisDoc || !analysisDoc.exists()) {
           toast('error', 'Analysis not found.');
           return;
         }
+        setAnalysisDocId(analysisDoc.id);
         const analysisData = analysisDoc.data() as AnalysisResult;
         setAnalysis(analysisData);
         setInterventions(
@@ -141,17 +146,17 @@ export default function InterventionPlanner() {
     }
 
     loadData();
-  }, [id, toast]);
+  }, [id, user, toast]);
 
   // ---- persist helpers ----
   const persistIntervention = useCallback(
     async (interventionId: string, updates: Partial<Intervention>) => {
-      if (!analysis || !id) return;
+      if (!analysis || !analysisDocId) return;
       try {
         const updatedList = interventions.map((int) =>
           int.interventionId === interventionId ? { ...int, ...updates } : int,
         );
-        await updateDoc(doc(db, 'analyses', id), {
+        await updateDoc(doc(db, 'analyses', analysisDocId), {
           interventions: updatedList,
         });
       } catch (err) {
@@ -159,7 +164,7 @@ export default function InterventionPlanner() {
         toast('error', 'Failed to save changes.');
       }
     },
-    [analysis, id, interventions, toast],
+    [analysis, analysisDocId, interventions, toast],
   );
 
   // ---- actions ----

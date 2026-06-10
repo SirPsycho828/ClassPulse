@@ -119,9 +119,8 @@ function getNavigationPath(assignment: Assignment): string {
       return `/analysis/${assignment.id}/upload`;
     case 'extracting':
     case 'analyzing':
-      return `/analysis/${assignment.id}`;
     case 'error':
-      return `/analysis/${assignment.id}`;
+      return `/analysis/${assignment.id}/upload`;
     default:
       return `/analysis/${assignment.id}`;
   }
@@ -375,6 +374,7 @@ export default function Dashboard() {
         const batch = completedIds.slice(i, i + 30);
         const q = query(
           collection(db, 'interventions'),
+          where('teacherId', '==', user!.uid),
           where('assignmentId', 'in', batch),
           where('status', '==', 'pending')
         );

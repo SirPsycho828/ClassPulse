@@ -14,7 +14,7 @@ import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import ClassForm from '@/components/ClassForm';
-import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle, Upload } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle, Upload, Camera } from 'lucide-react';
 import type { AnswerKey, AnswerKeyQuestion } from '@/lib/schemas';
 
 // ---------------------------------------------------------------------------
@@ -423,6 +423,7 @@ function StepAnswerKey({
   onPhotoUpload,
   onPhotoReset,
   fileInputRef,
+  cameraInputRef,
 }: {
   rows: AnswerKeyRow[];
   setRows: (rows: AnswerKeyRow[]) => void;
@@ -440,6 +441,7 @@ function StepAnswerKey({
   onPhotoUpload: (file: File) => void;
   onPhotoReset: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  cameraInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -521,29 +523,52 @@ function StepAnswerKey({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex flex-col items-center justify-center gap-3 py-10 px-4 border-2 border-dashed rounded-[--radius-md] cursor-pointer transition-colors ${
+                className={`flex flex-col items-center justify-center gap-3 py-8 px-4 border-2 border-dashed rounded-[--radius-md] transition-colors ${
                   dragOver
                     ? 'border-primary bg-primary/5'
-                    : 'border-input hover:border-primary/50 hover:bg-muted/30'
+                    : 'border-input'
                 }`}
               >
-                <Upload className="w-8 h-8 text-muted-foreground" />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-foreground">
-                    Drop your answer key photo here
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    or click to browse — JPEG, PNG, HEIC, WebP (max 10 MB)
-                  </p>
-                </div>
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={handleFileSelect}
+                />
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  className="sr-only"
                   onChange={handleFileSelect}
                 />
+                <Upload className="w-8 h-8 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">
+                  Upload your answer key photo
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="flex items-center gap-2 bg-primary text-primary-foreground py-2 px-4 rounded-full text-sm font-medium hover:bg-primary/90"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 border border-input text-foreground py-2 px-4 rounded-full text-sm font-medium hover:bg-muted/50"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Browse Files
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  JPEG, PNG, HEIC, WebP (max 10 MB)
+                </p>
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -839,6 +864,7 @@ export default function SetupWizard() {
   // ---------------------------------------------------------------------------
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleAnswerKeyPhotoUpload = useCallback(
     async (file: File) => {
@@ -1146,6 +1172,7 @@ export default function SetupWizard() {
             onPhotoUpload={handleAnswerKeyPhotoUpload}
             onPhotoReset={handlePhotoReset}
             fileInputRef={fileInputRef}
+            cameraInputRef={cameraInputRef}
           />
         )}
 

@@ -19,6 +19,7 @@ export type OverrideEnvelope = z.infer<typeof OverrideEnvelopeSchema>;
 export const ExtractedStudentSchema = z.object({
   extractionIndex: z.number().int().min(0),
   sourceImageIndex: z.number().int().min(0),
+  sourceImagePath: z.string().default(''),
   rawName: z.string(),
   nameConfidence: z.number().min(0).max(1),
   answers: z
@@ -323,6 +324,14 @@ export const AnalysisResultSchema = z.object({
             }),
           )
           .default([]),
+        interventionPlan: z
+          .object({
+            summary: z.string(),
+            steps: z.array(z.string()),
+          })
+          .nullable()
+          .default(null),
+        sourceImagePath: z.string().nullable().default(null),
       }),
     )
     .default([]),

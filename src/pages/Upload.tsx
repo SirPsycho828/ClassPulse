@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import {
   Upload as UploadIcon,
+  Camera,
   Image,
   FileSpreadsheet,
   X,
@@ -42,6 +43,7 @@ interface UploadingFile {
   progress: number;
   status: 'queued' | 'uploading' | 'done' | 'error';
   url?: string;
+  storagePath?: string;
   error?: string;
 }
 
@@ -58,7 +60,7 @@ interface ColumnMapping {
 // Constants
 // ---------------------------------------------------------------------------
 
-const IMAGE_ACCEPT = '.jpeg,.jpg,.png,.heic,.webp';
+const IMAGE_ACCEPT = 'image/*';
 const IMAGE_MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 const IMAGE_MAX_COUNT = 30;
 const MAX_CONCURRENT = 3;
@@ -70,24 +72,42 @@ const CSV_MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 // Elapsed Timer
 // ---------------------------------------------------------------------------
 
-function ElapsedTimer() {
-  const [elapsed, setElapsed] = useState(0);
+function ElapsedTimer({ startedAt }: { startedAt?: Date | null }) {
+  const [elapsed, setElapsed] = useState(() => {
+    if (startedAt) return Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+    return 0;
+  });
 
   useEffect(() => {
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const interval = setInterval(() => {
+      if (startedAt) {
+        setElapsed(Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000)));
+      } else {
+        setElapsed((e) => e + 1);
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [startedAt]);
 
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
   return (
-    <p className="text-sm text-muted-foreground mt-6">
-      {elapsed < 30
-        ? `Usually takes 15-30 seconds (${timeStr})`
-        : `Still working... (${timeStr})`}
-    </p>
+    <div className="mt-6 space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {elapsed < 60
+          ? `This usually takes 1–3 minutes (${timeStr})`
+          : elapsed < 180
+            ? `Still working… AI is reading each paper (${timeStr})`
+            : `Almost there… (${timeStr})`}
+      </p>
+      {elapsed >= 15 && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg px-4 py-3 text-sm text-primary font-medium">
+          You can leave this page and come back later — your analysis will keep running.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -98,21 +118,48 @@ function ElapsedTimer() {
 function ProcessingView({
   assignmentId,
   status,
+  progress,
+  startedAt,
 }: {
   assignmentId: string;
   status: string;
+  progress: { phase: string; current: number; total: number } | null;
+  startedAt?: Date | null;
 }) {
   const navigate = useNavigate();
 
-  const steps = [
-    { key: 'processing_images', label: 'Processing images' },
-    { key: 'extracting', label: 'Extracting student data' },
-    { key: 'matching', label: 'Matching to roster' },
+  // Determine if we're in the analysis phase (post-review)
+  const isAnalysisPhase = status === 'analyzing' || status === 'complete';
+
+  // Build step label with live count
+  function stepLabel(key: string) {
+    if (key === 'extracting' && progress?.phase === 'extracting' && progress.total > 0) {
+      return `Reading papers (${progress.current} of ${progress.total})`;
+    }
+    if (key === 'extracting') return 'Reading student papers';
+    if (key === 'matching') return 'Matching to roster';
+    if (key === 'analyzing') return 'Running AI analysis';
+    return key;
+  }
+
+  const extractionSteps = [
+    { key: 'extracting' },
+    { key: 'matching' },
   ];
+
+  const analysisSteps = [
+    { key: 'analyzing' },
+  ];
+
+  const steps = isAnalysisPhase ? analysisSteps : extractionSteps;
 
   // Derive step states from status
   function getStepState(stepKey: string) {
-    const order = ['uploading', 'processing_images', 'extracting', 'matching', 'needs_review', 'complete'];
+    if (isAnalysisPhase) {
+      if (status === 'complete') return 'done';
+      return 'active';
+    }
+    const order = ['uploading', 'extracting', 'matching', 'needs_review', 'complete'];
     const statusIndex = order.indexOf(status);
     const stepIndex = order.indexOf(stepKey);
 
@@ -122,16 +169,38 @@ function ProcessingView({
   }
 
   useEffect(() => {
-    if (status === 'needs_review' || status === 'complete') {
+    if (status === 'complete') {
+      navigate(`/analysis/${assignmentId}`, { replace: true });
+    } else if (status === 'needs_review') {
       navigate(`/analysis/${assignmentId}/review`, { replace: true });
     }
   }, [status, assignmentId, navigate]);
+
+  if (status === 'error') {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-4" />
+        <h2 className="font-heading text-lg font-semibold text-foreground mb-2">
+          Something went wrong
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          The analysis encountered an error. You can try again from the dashboard.
+        </p>
+        <button
+          onClick={() => navigate('/dashboard', { replace: true })}
+          className="bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="text-center py-12">
       <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
       <h2 className="font-heading text-lg font-semibold text-foreground mb-6">
-        Analyzing student papers...
+        {isAnalysisPhase ? 'Running analysis...' : 'Reading student papers...'}
       </h2>
 
       <div className="max-w-xs mx-auto space-y-3">
@@ -155,14 +224,14 @@ function ProcessingView({
                       : 'text-muted-foreground'
                 }`}
               >
-                {s.label}
+                {stepLabel(s.key)}
               </span>
             </div>
           );
         })}
       </div>
 
-      <ElapsedTimer />
+      <ElapsedTimer startedAt={startedAt} />
     </div>
   );
 }
@@ -187,6 +256,8 @@ function ImageUpload({
   const [starting, setStarting] = useState(false);
   const activeUploads = useRef(0);
   const queueRef = useRef<UploadingFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const completedCount = files.filter((f) => f.status === 'done').length;
   const hasErrors = files.some((f) => f.status === 'error');
@@ -233,7 +304,7 @@ function ImageUpload({
             setFiles((prev) =>
               prev.map((f) =>
                 f.id === next.id
-                  ? { ...f, status: 'done' as const, progress: 100, url }
+                  ? { ...f, status: 'done' as const, progress: 100, url, storagePath: task.snapshot.ref.fullPath }
                   : f,
               ),
             );
@@ -325,24 +396,29 @@ function ImageUpload({
 
     setStarting(true);
     try {
-      // Collect URLs from completed uploads
-      const urls = files
-        .filter((f) => f.status === 'done' && f.url)
-        .map((f) => f.url!);
+      // Collect storage paths from completed uploads
+      const paths = files
+        .filter((f) => f.status === 'done' && f.storagePath)
+        .map((f) => f.storagePath!);
 
-      // Update assignment with image URLs
+      // Update assignment with storage paths (not download URLs)
       await updateDoc(doc(db, 'assignments', assignmentId), {
-        imageUrls: urls,
-        status: 'processing_images',
+        imageUrls: paths,
+        status: 'extracting',
       });
 
-      // Call Cloud Function
+      // Fire-and-forget — ProcessingView listens to Firestore for real-time progress
       const runExtraction = httpsCallable(functions, 'runExtraction');
-      await runExtraction({ assignmentId });
+      runExtraction({ assignmentId }).catch((err) => {
+        console.error('Extraction error:', err);
+      });
 
+      // Immediately show the processing view
       onStartExtraction();
-    } catch {
-      toast('error', 'Failed to start extraction. Please try again.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[handleStartExtraction]', err);
+      toast('error', `Extraction failed: ${msg}`);
       setStarting(false);
     }
   }
@@ -362,23 +438,53 @@ function ImageUpload({
       <div
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className="border-2 border-dashed border-input rounded-[--radius-md] p-8 text-center hover:border-primary/40 hover:bg-primary/5 transition-colors cursor-pointer"
-        onClick={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.multiple = true;
-          input.accept = IMAGE_ACCEPT;
-          input.onchange = () => {
-            if (input.files) addFiles(input.files);
-          };
-          input.click();
-        }}
+        className="border-2 border-dashed border-input rounded-[--radius-md] p-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
       >
-        <UploadIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground font-medium">
-          Drag & drop images here, or click to browse
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={(e) => {
+            if (e.target.files) addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={IMAGE_ACCEPT}
+          className="sr-only"
+          onChange={(e) => {
+            if (e.target.files) addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <UploadIcon className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground mb-4">
+          Upload photos of student papers
         </p>
-        <p className="text-xs text-muted-foreground mt-1">
+        <div className="flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex items-center gap-2 bg-primary text-primary-foreground py-2 px-4 rounded-full text-sm font-medium hover:bg-primary/90"
+          >
+            <Camera className="w-4 h-4" />
+            Take Photo
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 border border-input text-foreground py-2 px-4 rounded-full text-sm font-medium hover:bg-muted/50"
+          >
+            <UploadIcon className="w-4 h-4" />
+            Browse Files
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
           JPEG, PNG, HEIC, WebP -- max 10 MB each
         </p>
       </div>
@@ -862,6 +968,12 @@ export default function Upload() {
   const [loading, setLoading] = useState(true);
   const [showProcessing, setShowProcessing] = useState(false);
   const [liveStatus, setLiveStatus] = useState('uploading');
+  const [processingStartedAt, setProcessingStartedAt] = useState<Date | null>(null);
+  const [extractionProgress, setExtractionProgress] = useState<{
+    phase: string;
+    current: number;
+    total: number;
+  } | null>(null);
   const [rosterCount, setRosterCount] = useState<number | null>(null);
 
   // Load assignment document
@@ -925,13 +1037,28 @@ export default function Upload() {
   }, [id, user, toast, navigate]);
 
   // Live status listener for processing view
+  const analysisTriggeredRef = useRef(false);
   useEffect(() => {
     if (!id || !showProcessing) return;
 
     const unsub = onSnapshot(doc(db, 'assignments', id), (snap) => {
       if (snap.exists()) {
-        const status = snap.data().status as string;
-        setLiveStatus(status);
+        const data = snap.data();
+        setLiveStatus(data.status as string);
+        setExtractionProgress(data.pipelineState?.extractionProgress ?? null);
+        // Use processingStartedAt if available, fall back to updatedAt
+        const ts = data.processingStartedAt ?? data.updatedAt;
+        if (ts && !processingStartedAt) {
+          setProcessingStartedAt(ts.toDate());
+        }
+        // Recovery: if status is 'analyzing' but runAnalysis was never triggered, fire it
+        if (data.status === 'analyzing' && !analysisTriggeredRef.current) {
+          analysisTriggeredRef.current = true;
+          const runAnalysis = httpsCallable(functions, 'runAnalysis');
+          runAnalysis({ assignmentId: id }).catch((err) =>
+            console.error('runAnalysis recovery error:', err),
+          );
+        }
       }
     });
 
@@ -960,7 +1087,7 @@ export default function Upload() {
       )}
       <div className="bg-card rounded-[--radius-md] shadow-[--shadow-sm] border border-border p-6">
         {showProcessing ? (
-          <ProcessingView assignmentId={id} status={liveStatus} />
+          <ProcessingView assignmentId={id} status={liveStatus} progress={extractionProgress} startedAt={processingStartedAt} />
         ) : assignment.sourceType === 'image' ? (
           <ImageUpload
             assignmentId={id}

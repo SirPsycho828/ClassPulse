@@ -37,7 +37,7 @@ const DEFAULT_CONFIGS: Record<PipelineFunction, ModelConfig> = {
     requiresVision: false,
   },
   analysis: {
-    modelId: 'anthropic/claude-opus-4-6',
+    modelId: 'anthropic/claude-sonnet-4-6',
     requiresVision: false,
   },
 };
@@ -210,6 +210,7 @@ export async function callOpenRouter(
   messages: Array<{ role: string; content: string | Array<unknown> }>,
 ): Promise<OpenRouterResponse> {
   const config = await getModelConfig(fn);
+  console.log(`[callOpenRouter] fn=${fn} model=${config.modelId}`);
 
   const body: OpenRouterRequestBody = {
     model: config.modelId,

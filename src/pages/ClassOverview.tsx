@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useMemo, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult, GradedResult } from '@/lib/schemas';
 import {
@@ -92,7 +94,9 @@ type SortDir = 'asc' | 'desc';
 
 export default function ClassOverview() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -111,16 +115,31 @@ export default function ClassOverview() {
   const [skillEdited, setSkillEdited] = useState(false);
   const [expandedWrongAnswers, setExpandedWrongAnswers] = useState<Set<string>>(new Set());
 
+  // Chart container — only render once the DOM element has positive dimensions
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [chartReady, setChartReady] = useState(false);
+  useEffect(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) setChartReady(true);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading]);
+
   // ---- load data ----
   useEffect(() => {
     if (!id) return;
 
     async function loadData() {
       try {
-        // Load analysis doc
-        const analysisDoc = await getDoc(doc(db, 'analyses', id!));
-        if (!analysisDoc.exists()) {
-          toast('error', 'Analysis not found.');
+        // Load analysis doc — resolve from assignmentId or analysisId
+        const analysisDoc = await resolveAnalysis(id!, user!.uid);
+        if (!analysisDoc || !analysisDoc.exists()) {
+          toast('info', 'This analysis is still processing. Check back shortly.');
+          navigate('/dashboard', { replace: true });
           return;
         }
         const analysisData = analysisDoc.data() as AnalysisResult;
@@ -157,7 +176,7 @@ export default function ClassOverview() {
     }
 
     loadData();
-  }, [id, toast]);
+  }, [id, toast, navigate]);
 
   // ---- histogram data ----
   const histogramData = useMemo(() => {
@@ -388,12 +407,12 @@ export default function ClassOverview() {
           </div>
 
           {/* Right: Histogram */}
-          <div>
+          <div className="min-w-0">
             <h3 className="font-heading text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
               Score Distribution
             </h3>
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
+            <div ref={chartContainerRef} className="h-52">
+              {chartReady && <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={histogramData}
                   margin={{ top: 5, right: 5, bottom: 5, left: 0 }}
@@ -426,7 +445,7 @@ export default function ClassOverview() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer>}
             </div>
           </div>
         </div>
@@ -527,14 +546,18 @@ export default function ClassOverview() {
                             </button>
                             {isExpanded && (
                               <div className="mt-1.5 space-y-1.5 pl-3 border-l-2 border-border">
-                                {skill.commonWrongAnswers.map((cwa, i) => (
+                                {skill.commonWrongAnswers
+                                  .filter((cwa) => cwa.answerValue || cwa.misconception)
+                                  .map((cwa, i) => (
                                   <div key={i} className="text-xs">
                                     <span className="font-medium text-destructive">
-                                      "{cwa.answerValue}"
+                                      "{cwa.answerValue || ((cwa as Record<string, unknown>).answer as string)}"
                                     </span>
-                                    <span className="text-muted-foreground ml-1">
-                                      ({Math.round(cwa.frequencyPercent * 100)}%)
-                                    </span>
+                                    {cwa.frequencyPercent != null && !isNaN(cwa.frequencyPercent) && cwa.frequencyPercent > 0 && (
+                                      <span className="text-muted-foreground ml-1">
+                                        ({Math.round(cwa.frequencyPercent * 100)}%)
+                                      </span>
+                                    )}
                                     <p className="text-muted-foreground mt-0.5">
                                       {cwa.misconception}
                                     </p>
@@ -625,12 +648,14 @@ export default function ClassOverview() {
                     {int.misconceptionSummary}
                   </p>
 
-                  <div className="flex items-center gap-1 text-xs text-primary">
-                    <Zap className="w-3 h-3" />
-                    <span className="font-medium">Quick win:</span>
-                    <span className="text-muted-foreground truncate">
+                  <div className="text-xs mt-2 bg-primary/5 rounded-[--radius-md] px-3 py-2">
+                    <div className="flex items-center gap-1 text-primary font-medium mb-1">
+                      <Zap className="w-3 h-3 flex-shrink-0" />
+                      Quick win
+                    </div>
+                    <p className="text-muted-foreground">
                       {int.effortTiers.quick.description}
-                    </span>
+                    </p>
                   </div>
                 </div>
               );

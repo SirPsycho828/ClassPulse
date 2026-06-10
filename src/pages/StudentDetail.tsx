@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult } from '@/lib/schemas';
 import {
@@ -10,6 +13,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
+  FileImage,
   Loader2,
   TrendingDown,
   TrendingUp,
@@ -68,11 +73,20 @@ export default function StudentDetail() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [assignmentTitle, setAssignmentTitle] = useState('');
   const [showWrongOnly, setShowWrongOnly] = useState(false);
+  const [quizPhotoUrl, setQuizPhotoUrl] = useState<string | null>(null);
+  const [photoExpanded, setPhotoExpanded] = useState(true);
+  const [gradedStudentQuestions, setGradedStudentQuestions] = useState<
+    { questionNumber: number; studentAnswer: string; correctAnswer: string; isCorrect: boolean }[]
+  >([]);
+  const [answerKeyQuestions, setAnswerKeyQuestions] = useState<
+    { questionNumber: number; questionText: string | null }[]
+  >([]);
 
   // ---- load data ----
   useEffect(() => {
@@ -80,8 +94,8 @@ export default function StudentDetail() {
 
     async function loadData() {
       try {
-        const analysisDoc = await getDoc(doc(db, 'analyses', id!));
-        if (!analysisDoc.exists()) {
+        const analysisDoc = await resolveAnalysis(id!, user!.uid);
+        if (!analysisDoc || !analysisDoc.exists()) {
           toast('error', 'Analysis not found.');
           navigate('/dashboard');
           return;
@@ -89,11 +103,55 @@ export default function StudentDetail() {
         const analysisData = analysisDoc.data() as AnalysisResult;
         setAnalysis(analysisData);
 
+        // Load quiz photo for this student
+        const studentInsight = analysisData.studentInsights.find(
+          (s) => s.studentId === studentId,
+        );
+        if (studentInsight?.sourceImagePath) {
+          try {
+            const url = await getDownloadURL(ref(storage, studentInsight.sourceImagePath));
+            setQuizPhotoUrl(url);
+          } catch {
+            // Photo not available — not critical
+          }
+        }
+
         const assignDoc = await getDoc(
           doc(db, 'assignments', analysisData.assignmentId),
         );
         if (assignDoc.exists()) {
-          setAssignmentTitle(assignDoc.data().title ?? 'Untitled Assignment');
+          const ad = assignDoc.data();
+          setAssignmentTitle(ad.title ?? 'Untitled Assignment');
+
+          // Load answer key question text
+          if (ad.answerKey?.questions) {
+            setAnswerKeyQuestions(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (ad.answerKey.questions as any[]).map((q) => ({
+                questionNumber: q.questionNumber,
+                questionText: q.questionText || null,
+              })),
+            );
+          }
+
+          // Load graded result for this student
+          if (ad.pipelineState?.gradedResult?.gradedStudents) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const gs = (ad.pipelineState.gradedResult.gradedStudents as any[]).find(
+              (s) => s.studentId === studentId,
+            );
+            if (gs?.perQuestion) {
+              setGradedStudentQuestions(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                gs.perQuestion.map((pq: any) => ({
+                  questionNumber: pq.questionNumber,
+                  studentAnswer: pq.studentAnswer || '',
+                  correctAnswer: pq.correctAnswer || '',
+                  isCorrect: !!pq.isCorrect,
+                })),
+              );
+            }
+          }
         }
       } catch (err) {
         console.error(err);
@@ -120,23 +178,39 @@ export default function StudentDetail() {
       ? analysis.studentInsights[studentIndex + 1]
       : null;
 
-  // ---- graded questions from the assignment pipeline (loaded via analysis) ----
-  // We derive question-by-question info from wrongAnswerAnalysis and skillPerformance
+  // ---- question-by-question: prefer graded data, fall back to wrongAnswerAnalysis ----
   const questionRows = useMemo(() => {
     if (!student) return [];
+
+    // If we have graded data, use it (has ALL questions, correct + wrong)
+    if (gradedStudentQuestions.length > 0) {
+      return gradedStudentQuestions
+        .slice()
+        .sort((a, b) => a.questionNumber - b.questionNumber)
+        .map((gq) => {
+          const akq = answerKeyQuestions.find((q) => q.questionNumber === gq.questionNumber);
+          const wa = student.wrongAnswerAnalysis.find((w) => w.questionNumber === gq.questionNumber);
+          return {
+            questionNumber: gq.questionNumber,
+            questionText: akq?.questionText || wa?.questionText || '',
+            studentAnswer: gq.studentAnswer,
+            correctAnswer: gq.correctAnswer,
+            isCorrect: gq.isCorrect,
+            misconception: wa?.misconception || '',
+          };
+        });
+    }
+
+    // Fallback: only wrong answers available
     return student.wrongAnswerAnalysis.map((wa) => ({
       questionNumber: wa.questionNumber,
       questionText: wa.questionText ?? '',
       studentAnswer: wa.studentAnswer,
       correctAnswer: wa.correctAnswer,
-      isCorrect: wa.studentAnswer === wa.correctAnswer,
+      isCorrect: false,
       misconception: wa.misconception,
     }));
-  }, [student]);
-
-  // For the "all questions" view, we need graded data. We'll show what we have
-  // from wrongAnswerAnalysis (wrong answers) and note that correct answers
-  // aren't individually stored in studentInsights.
+  }, [student, gradedStudentQuestions, answerKeyQuestions]);
 
   // ---- skill comparison table ----
   const skillRows = useMemo(() => {
@@ -154,6 +228,28 @@ export default function StudentDetail() {
       };
     });
   }, [student, analysis]);
+
+  // Misconception cards: group wrong answers by misconception
+  const misconceptionGroups = useMemo(() => {
+    if (!student) return [];
+    const groups: Record<
+      string,
+      {
+        misconception: string;
+        questions: typeof student.wrongAnswerAnalysis;
+      }
+    > = {};
+
+    student.wrongAnswerAnalysis.forEach((wa) => {
+      const key = wa.misconception;
+      if (!groups[key]) {
+        groups[key] = { misconception: key, questions: [] };
+      }
+      groups[key].questions.push(wa);
+    });
+
+    return Object.values(groups);
+  }, [student]);
 
   // ---- loading ----
   if (loading || !analysis) {
@@ -181,27 +277,6 @@ export default function StudentDetail() {
 
   const classAvg = analysis.classSummary.meanScore;
   const scoreDiff = student.totalScore - classAvg;
-
-  // Misconception cards: group wrong answers by misconception
-  const misconceptionGroups = useMemo(() => {
-    const groups: Record<
-      string,
-      {
-        misconception: string;
-        questions: typeof student.wrongAnswerAnalysis;
-      }
-    > = {};
-
-    student.wrongAnswerAnalysis.forEach((wa) => {
-      const key = wa.misconception;
-      if (!groups[key]) {
-        groups[key] = { misconception: key, questions: [] };
-      }
-      groups[key].questions.push(wa);
-    });
-
-    return Object.values(groups);
-  }, [student]);
 
   return (
     <div className="space-y-6">
@@ -505,6 +580,58 @@ export default function StudentDetail() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ====== INDIVIDUAL INTERVENTION PLAN ====== */}
+      {student.interventionPlan && (
+        <section className="bg-card border border-border border-l-4 border-l-primary rounded-[--radius-md] p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <ClipboardList className="w-5 h-5 text-primary" />
+            <h2 className="font-heading text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Individual Intervention Plan
+            </h2>
+          </div>
+          <p className="text-sm text-foreground mb-4">
+            {student.interventionPlan.summary}
+          </p>
+          <ol className="space-y-3">
+            {student.interventionPlan.steps.map((step, i) => (
+              <li key={i} className="flex gap-3 text-sm">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-foreground">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {/* ====== ORIGINAL QUIZ PHOTO ====== */}
+      {quizPhotoUrl && (
+        <section className="bg-card border border-border rounded-[--radius-md] p-4 sm:p-6">
+          <button
+            onClick={() => setPhotoExpanded(!photoExpanded)}
+            className="flex items-center gap-2 mb-3 w-full text-left"
+          >
+            <FileImage className="w-5 h-5 text-muted-foreground" />
+            <h2 className="font-heading text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Original Quiz Photo
+            </h2>
+            <ChevronRight
+              className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${photoExpanded ? 'rotate-90' : ''}`}
+            />
+          </button>
+          {photoExpanded && (
+            <div className="mt-2">
+              <img
+                src={quizPhotoUrl}
+                alt={`${student.studentName}'s quiz`}
+                className="w-full max-w-lg rounded-[--radius-md] border border-border shadow-sm"
+              />
+            </div>
+          )}
         </section>
       )}
 

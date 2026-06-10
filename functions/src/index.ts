@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { beforeUserCreated } from 'firebase-functions/v2/identity';
+import { auth } from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import { callOpenRouter } from './shared/openrouter';
 import {
@@ -62,10 +62,7 @@ function generateId(): string {
 // Auth trigger: create teacher profile on new user
 // ---------------------------------------------------------------------------
 
-export const onUserCreate = beforeUserCreated(async (event) => {
-  const user = event.data;
-  if (!user) return;
-
+export const onUserCreate = auth.user().onCreate(async (user) => {
   await db.collection('teachers').doc(user.uid).set({
     uid: user.uid,
     email: user.email || '',

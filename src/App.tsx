@@ -23,6 +23,13 @@ import Onboarding from '@/pages/Onboarding';
 import NerdyPresentation from '@/pages/NerdyPresentation';
 import AnalysisLayout from '@/components/layout/AnalysisLayout';
 import StudentList from '@/pages/StudentList';
+import ClassesList from '@/pages/ClassesList';
+import ClassDetailLayout from '@/components/layout/ClassDetailLayout';
+import ClassDetailOverview from '@/pages/ClassDetailOverview';
+import ClassDetailRoster from '@/pages/ClassDetailRoster';
+import ClassDetailInterventions from '@/pages/ClassDetailInterventions';
+import StudentsList from '@/pages/StudentsList';
+import StudentDetailLongitudinal from '@/pages/StudentDetailLongitudinal';
 
 function LandingRoute() {
   const { authState } = useAuth();
@@ -60,6 +67,14 @@ export default function App() {
                 <Route path="student/:studentId" element={<StudentDetail />} />
               </Route>
               <Route path="/settings" element={<Settings />} />
+              <Route path="/classes" element={<ClassesList />} />
+              <Route path="/classes/:classId" element={<ClassDetailLayout />}>
+                <Route index element={<ClassDetailOverview />} />
+                <Route path="roster" element={<ClassDetailRoster />} />
+                <Route path="interventions" element={<ClassDetailInterventions />} />
+              </Route>
+              <Route path="/students" element={<StudentsList />} />
+              <Route path="/students/:classId/:studentId" element={<StudentDetailLongitudinal />} />
             </Route>
 
             {/* Admin routes */}

@@ -9,7 +9,8 @@ export function AppLayout() {
   // Stable key for analysis sub-routes: all tabs under /analysis/:id share one key
   // so the layout doesn't remount (and re-fetch) on tab switches
   const analysisMatch = location.pathname.match(/^(\/analysis\/[^/]+)/);
-  const animationKey = analysisMatch ? analysisMatch[1] : location.pathname;
+  const classMatch = location.pathname.match(/^(\/classes\/[^/]+)/);
+  const animationKey = analysisMatch ? analysisMatch[1] : classMatch ? classMatch[1] : location.pathname;
 
   return (
     <TourProvider>

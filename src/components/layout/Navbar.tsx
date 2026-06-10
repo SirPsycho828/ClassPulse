@@ -34,10 +34,15 @@ export function Navbar() {
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Classes', path: '/classes' },
+    { label: 'Students', path: '/students' },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin/models' }] : []),
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) =>
+    path === '/dashboard'
+      ? location.pathname === path
+      : location.pathname.startsWith(path);
 
   const initials = teacher?.displayName
     ? teacher.displayName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()

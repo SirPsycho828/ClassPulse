@@ -10,6 +10,7 @@ import {
   type AssignmentType,
 } from './shared/prompts';
 import { matchRoster, type RosterStudent } from './pipeline/rosterMatch';
+import { updateSummaries } from './pipeline/updateSummaries';
 import { gradeStudents, type AnswerKeyQuestion } from './pipeline/grade';
 import {
   calculateClassStats,
@@ -1114,6 +1115,15 @@ export const runAnalysis = onCall(
         analysisId,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Stage 9: Update summary documents for longitudinal tracking
+      console.log('[runAnalysis] Stage 9: Updating summary documents...');
+      try {
+        await updateSummaries(assignment.classId, request.auth.uid);
+      } catch (summaryErr) {
+        // Non-fatal: analysis succeeded, summaries are best-effort
+        console.error('[runAnalysis] Summary update failed (non-fatal):', summaryErr);
+      }
 
       return { success: true, analysisId };
     } catch (err: unknown) {

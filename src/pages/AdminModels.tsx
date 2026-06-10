@@ -462,6 +462,12 @@ export default function AdminModels() {
         </div>
       </section>
 
+      {/* Utilities */}
+      <section className="bg-card border border-border rounded-[--radius-md] p-5">
+        <h2 className="font-heading text-lg font-semibold text-foreground mb-3">Utilities</h2>
+        <MigrateDisplayNamesButton />
+      </section>
+
       {/* ====== SECTION 2: MODEL BROWSER ====== */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -639,11 +645,6 @@ export default function AdminModels() {
         </p>
       </section>
 
-      {/* Utilities */}
-      <section className="bg-card border border-border rounded-[--radius-md] p-5">
-        <h2 className="font-heading text-lg font-semibold text-foreground mb-3">Utilities</h2>
-        <MigrateDisplayNamesButton />
-      </section>
     </div>
   );
 }

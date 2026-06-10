@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/contexts/AuthContext';
-import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult } from '@/lib/schemas';
+import { useAnalysisContext } from '@/components/layout/AnalysisLayout';
 import {
   Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   GraduationCap,
-  Loader2,
   MessageSquare,
   Users,
   User,
@@ -92,61 +90,22 @@ type Intervention = AnalysisResult['interventions'][number];
 export default function InterventionPlanner() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { user } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [analysisDocId, setAnalysisDocId] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [interventions, setInterventions] = useState<Intervention[]>([]);
-  const [assignmentTitle, setAssignmentTitle] = useState('');
+  const { analysis, analysisDocId } = useAnalysisContext();
+  const [interventions, setInterventions] = useState<Intervention[]>(
+    [...analysis.interventions].sort((a, b) => a.priority - b.priority),
+  );
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
   const [dismissedExpanded, setDismissedExpanded] = useState(false);
   const [pendingDismiss, setPendingDismiss] = useState<string | null>(null);
 
   // Student name lookup
-  const [studentNames, setStudentNames] = useState<Record<string, string>>({});
-
-  // ---- load data ----
-  useEffect(() => {
-    if (!id) return;
-
-    async function loadData() {
-      try {
-        const analysisDoc = await resolveAnalysis(id!, user!.uid);
-        if (!analysisDoc || !analysisDoc.exists()) {
-          toast('error', 'Analysis not found.');
-          return;
-        }
-        setAnalysisDocId(analysisDoc.id);
-        const analysisData = analysisDoc.data() as AnalysisResult;
-        setAnalysis(analysisData);
-        setInterventions(
-          [...analysisData.interventions].sort((a, b) => a.priority - b.priority),
-        );
-
-        // Build student name map from studentInsights
-        const nameMap: Record<string, string> = {};
-        analysisData.studentInsights.forEach((s) => {
-          nameMap[s.studentId] = s.studentName;
-        });
-        setStudentNames(nameMap);
-
-        const assignDoc = await getDoc(
-          doc(db, 'assignments', analysisData.assignmentId),
-        );
-        if (assignDoc.exists()) {
-          setAssignmentTitle(assignDoc.data().title ?? 'Untitled Assignment');
-        }
-      } catch (err) {
-        console.error(err);
-        toast('error', 'Failed to load interventions.');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [id, user, toast]);
+  const studentNames = useMemo(() => {
+    const nameMap: Record<string, string> = {};
+    analysis.studentInsights.forEach((s) => {
+      nameMap[s.studentId] = s.studentName;
+    });
+    return nameMap;
+  }, [analysis]);
 
   // ---- persist helpers ----
   const persistIntervention = useCallback(
@@ -247,67 +206,22 @@ export default function InterventionPlanner() {
     return analysis.studentInsights.filter((s) => !coveredIds.has(s.studentId));
   }, [analysis, activeInterventions]);
 
-  // ---- loading ----
-  if (loading || !analysis) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        <span className="ml-2 text-sm text-muted-foreground">
-          Loading intervention plan...
-        </span>
-      </div>
-    );
-  }
-
   if (interventions.length === 0) {
     return (
-      <div className="space-y-6">
-        <nav className="text-sm text-muted-foreground">
-          <Link to="/dashboard" className="hover:text-primary">
-            Dashboard
-          </Link>
-          <span className="mx-1.5">/</span>
-          <Link to={`/analysis/${id}`} className="hover:text-primary">
-            {assignmentTitle}
-          </Link>
-          <span className="mx-1.5">/</span>
-          <span className="text-foreground">Interventions</span>
-        </nav>
-
-        <div className="text-center py-20">
-          <GraduationCap className="w-12 h-12 text-border mx-auto mb-4" />
-          <h2 className="font-heading text-lg font-semibold text-foreground">
-            No interventions recommended
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            The analysis did not identify any skill gaps requiring targeted intervention.
-          </p>
-          <Link
-            to={`/analysis/${id}`}
-            className="mt-4 inline-block text-sm text-primary hover:text-primary font-medium"
-          >
-            Back to Class Overview
-          </Link>
-        </div>
+      <div className="text-center py-20">
+        <GraduationCap className="w-12 h-12 text-border mx-auto mb-4" />
+        <h2 className="font-heading text-lg font-semibold text-foreground">
+          No interventions recommended
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          The analysis did not identify any skill gaps requiring targeted intervention.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav className="text-sm text-muted-foreground">
-        <Link to="/dashboard" className="hover:text-primary">
-          Dashboard
-        </Link>
-        <span className="mx-1.5">/</span>
-        <Link to={`/analysis/${id}`} className="hover:text-primary">
-          {assignmentTitle}
-        </Link>
-        <span className="mx-1.5">/</span>
-        <span className="text-foreground">Interventions</span>
-      </nav>
-
       {/* Header */}
       <div>
         <h1 className="font-heading text-2xl font-bold text-foreground">Intervention Planner</h1>

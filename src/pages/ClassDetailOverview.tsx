@@ -126,7 +126,7 @@ export default function ClassDetailOverview() {
                   backgroundColor: '#F8F5F0',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                 }}
-                formatter={(value: number, name: string) => [`${value}%`, name === 'mean' ? 'Mean' : 'Median']}
+                formatter={(value, name) => [`${value}%`, name === 'mean' ? 'Mean' : 'Median']}
                 labelFormatter={(label) => label}
               />
               <Line

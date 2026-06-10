@@ -310,10 +310,10 @@ export default function StudentDetailLongitudinal() {
                         backgroundColor: '#F8F5F0',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                       }}
-                      formatter={(value: number) => [`${value}%`, 'Score']}
+                      formatter={(value) => [`${value}%`, 'Score']}
                       labelFormatter={(label) => {
-                        const point = chartData.find((d) => d.name === label);
-                        return point ? `${label} (${point.date})` : label;
+                        const point = chartData.find((d) => d.name === String(label));
+                        return point ? `${label} (${point.date})` : String(label);
                       }}
                     />
                     <Line
@@ -329,7 +329,7 @@ export default function StudentDetailLongitudinal() {
                           dataKey="score"
                           position="top"
                           offset={10}
-                          formatter={(v: number) => `${v}%`}
+                          formatter={(v) => `${v}%`}
                           style={{ fontSize: 11, fontWeight: 600, fill: 'hsl(216, 52%, 24%)' }}
                         />
                       )}

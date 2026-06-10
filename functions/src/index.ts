@@ -1292,3 +1292,53 @@ export const updateModelConfig = onCall({ serviceAccount: 'classpulse-edu@appspo
 
   return { success: true };
 });
+
+// ---------------------------------------------------------------------------
+// One-off migration: fix student display names to full first + last
+// ---------------------------------------------------------------------------
+
+export const migrateDisplayNames = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+
+    const classesSnap = await db
+      .collection('classes')
+      .where('teacherId', '==', request.auth.uid)
+      .get();
+
+    let updated = 0;
+    for (const classDoc of classesSnap.docs) {
+      const studentsSnap = await classDoc.ref.collection('students').get();
+      const students = studentsSnap.docs.map((d) => ({
+        id: d.id,
+        firstName: (d.data().firstName as string) || '',
+        lastName: (d.data().lastName as string) || '',
+        currentDisplayName: (d.data().displayName as string) || '',
+      }));
+
+      const displayNames = students.map((s) =>
+        s.lastName ? `${s.firstName} ${s.lastName}` : s.firstName,
+      );
+
+      const batch = db.batch();
+      let batchCount = 0;
+      for (let i = 0; i < students.length; i++) {
+        if (students[i].currentDisplayName !== displayNames[i]) {
+          batch.update(
+            classDoc.ref.collection('students').doc(students[i].id),
+            { displayName: displayNames[i] },
+          );
+          batchCount++;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+        updated += batchCount;
+      }
+    }
+
+    return { success: true, updated };
+  },
+);

@@ -13,6 +13,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  LabelList,
+  ReferenceLine,
 } from 'recharts';
 import { AlertTriangle, Loader2, User } from 'lucide-react';
 
@@ -257,53 +259,85 @@ export default function StudentDetailLongitudinal() {
         </div>
       ) : (
         <>
-          {/* Score History Chart */}
+          {/* Score History */}
           <section className="bg-card border border-border rounded-[--radius-md] p-5">
             <h2 className="font-heading text-lg font-semibold text-foreground mb-4">Score History</h2>
-            <div ref={chartContainerRef} className="w-full h-[240px]">
-              {chartSize && (
-                <LineChart
-                  width={chartSize.w}
-                  height={chartSize.h}
-                  data={chartData}
-                  margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 11, fill: 'hsl(216, 15%, 50%)' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    tick={{ fontSize: 11, fill: 'hsl(216, 15%, 50%)' }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={35}
-                    tickFormatter={(v) => `${v}%`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      fontSize: '12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid hsl(33, 16%, 83%)',
-                      backgroundColor: '#F8F5F0',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                    }}
-                    formatter={(value: number) => [`${value}%`, 'Score']}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="hsl(216, 52%, 24%)"
-                    strokeWidth={2}
-                    dot={{ r: 4, fill: 'hsl(216, 52%, 24%)' }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              )}
-            </div>
+            {chartData.length === 1 ? (
+              /* Single data point — prominent score card instead of empty chart */
+              <div className="flex items-center gap-6 py-6">
+                <div className="flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 border-primary/20 bg-primary/5">
+                  <span className="text-3xl font-bold text-primary">{chartData[0].score}%</span>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{chartData[0].name}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">{chartData[0].date}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    More data points will appear here as additional analyses are completed.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* 2+ data points — line chart with value labels */
+              <div ref={chartContainerRef} className="w-full h-[240px]">
+                {chartSize && (
+                  <LineChart
+                    width={chartSize.w}
+                    height={chartSize.h}
+                    data={chartData}
+                    margin={{ top: 20, right: 20, bottom: 5, left: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: 'hsl(216, 15%, 50%)' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      tick={{ fontSize: 11, fill: 'hsl(216, 15%, 50%)' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={35}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <ReferenceLine y={70} stroke="hsl(33, 16%, 83%)" strokeDasharray="6 4" label={{ value: '70%', position: 'right', fontSize: 10, fill: 'hsl(216, 15%, 50%)' }} />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid hsl(33, 16%, 83%)',
+                        backgroundColor: '#F8F5F0',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                      }}
+                      formatter={(value: number) => [`${value}%`, 'Score']}
+                      labelFormatter={(label) => {
+                        const point = chartData.find((d) => d.name === label);
+                        return point ? `${label} (${point.date})` : label;
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="score"
+                      stroke="hsl(216, 52%, 24%)"
+                      strokeWidth={2}
+                      dot={{ r: 5, fill: 'hsl(216, 52%, 24%)', strokeWidth: 2, stroke: '#fff' }}
+                      activeDot={{ r: 7 }}
+                    >
+                      {chartData.length <= 6 && (
+                        <LabelList
+                          dataKey="score"
+                          position="top"
+                          offset={10}
+                          formatter={(v: number) => `${v}%`}
+                          style={{ fontSize: 11, fontWeight: 600, fill: 'hsl(216, 52%, 24%)' }}
+                        />
+                      )}
+                    </Line>
+                  </LineChart>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Assessment History Table */}

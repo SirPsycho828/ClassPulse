@@ -638,6 +638,47 @@ export default function AdminModels() {
           Showing {visibleModels.length} of {filteredModels.length} models. Prices per 1M tokens.
         </p>
       </section>
+
+      {/* Utilities */}
+      <section className="bg-card border border-border rounded-[--radius-md] p-5">
+        <h2 className="font-heading text-lg font-semibold text-foreground mb-3">Utilities</h2>
+        <MigrateDisplayNamesButton />
+      </section>
+    </div>
+  );
+}
+
+function MigrateDisplayNamesButton() {
+  const { toast } = useToast();
+  const [running, setRunning] = useState(false);
+
+  async function handleMigrate() {
+    setRunning(true);
+    try {
+      const fn = httpsCallable<Record<string, never>, { success: boolean; updated: number }>(functions, 'migrateDisplayNames');
+      const result = await fn({});
+      toast('success', `Updated ${result.data.updated} student display name${result.data.updated === 1 ? '' : 's'}.`);
+    } catch (err) {
+      toast('error', `Migration failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <button
+        type="button"
+        onClick={handleMigrate}
+        disabled={running}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-[--radius-md] hover:bg-primary/90 transition-colors disabled:opacity-50"
+      >
+        {running && <Loader2 className="w-4 h-4 animate-spin" />}
+        Fix Student Display Names
+      </button>
+      <span className="text-xs text-muted-foreground">
+        Updates all student names to show full first + last name.
+      </span>
     </div>
   );
 }

@@ -276,6 +276,12 @@ export default function StudentDetail() {
                 <span className="text-xs text-muted-foreground">
                   {Math.round(student.percentile)}th percentile
                 </span>
+                <Link
+                  to={`/students/${(analysis as any).classId}/${studentId}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  View full history &rarr;
+                </Link>
               </div>
             </div>
           </div>

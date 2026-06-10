@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Cell,
 } from 'recharts';
 import {
@@ -51,15 +50,15 @@ export default function ClassOverview() {
   const [skillEdited, setSkillEdited] = useState(false);
   const [expandedWrongAnswers, setExpandedWrongAnswers] = useState<Set<string>>(new Set());
 
-  // Chart container
+  // Chart container — track explicit pixel dimensions to avoid ResponsiveContainer race
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [chartReady, setChartReady] = useState(false);
+  const [chartSize, setChartSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = chartContainerRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) setChartReady(true);
+      setChartSize(width > 0 && height > 0 ? { w: width, h: height } : null);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -127,9 +126,17 @@ export default function ClassOverview() {
 
       {/* ====== AT A GLANCE ====== */}
       <section className="bg-card border border-border rounded-[--radius-md] p-6">
-        <h2 className="font-heading text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">
-          At a Glance
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-heading text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            At a Glance
+          </h2>
+          <Link
+            to={`/classes/${(analysis as any).classId}`}
+            className="text-sm text-primary hover:underline"
+          >
+            View class history &rarr;
+          </Link>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Big number + summary + stats */}
@@ -216,8 +223,10 @@ export default function ClassOverview() {
               Score Distribution
             </h3>
             <div ref={chartContainerRef} className="h-52">
-              {chartReady && <ResponsiveContainer width="100%" height="100%">
+              {chartSize && (
                 <BarChart
+                  width={chartSize.w}
+                  height={chartSize.h}
                   data={histogramData}
                   margin={{ top: 5, right: 5, bottom: 5, left: 0 }}
                 >
@@ -249,7 +258,7 @@ export default function ClassOverview() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>}
+              )}
             </div>
           </div>
         </div>

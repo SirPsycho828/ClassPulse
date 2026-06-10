@@ -657,9 +657,13 @@ export default function Dashboard() {
                   <ChevronDown
                     className={`w-4 h-4 text-muted-foreground transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
                   />
-                  <h3 className="font-heading text-base font-semibold text-foreground">
+                  <Link
+                    to={`/classes/${classDoc.id}`}
+                    className="font-heading text-base font-semibold text-foreground hover:text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {classDoc.name}
-                  </h3>
+                  </Link>
                   {classDoc.studentCount && (
                     <span className="text-xs text-muted-foreground">
                       &middot; {classDoc.studentCount} students

@@ -21,6 +21,8 @@ import AdminModels from '@/pages/AdminModels';
 import Settings from '@/pages/Settings';
 import Onboarding from '@/pages/Onboarding';
 import NerdyPresentation from '@/pages/NerdyPresentation';
+import AnalysisLayout from '@/components/layout/AnalysisLayout';
+import StudentList from '@/pages/StudentList';
 
 function LandingRoute() {
   const { authState } = useAuth();
@@ -51,9 +53,12 @@ export default function App() {
               <Route path="/analysis/new" element={<SetupWizard />} />
               <Route path="/analysis/:id/upload" element={<Upload />} />
               <Route path="/analysis/:id/review" element={<ReviewConfirm />} />
-              <Route path="/analysis/:id" element={<ClassOverview />} />
-              <Route path="/analysis/:id/student/:studentId" element={<StudentDetail />} />
-              <Route path="/analysis/:id/interventions" element={<InterventionPlanner />} />
+              <Route path="/analysis/:id" element={<AnalysisLayout />}>
+                <Route index element={<ClassOverview />} />
+                <Route path="students" element={<StudentList />} />
+                <Route path="interventions" element={<InterventionPlanner />} />
+                <Route path="student/:studentId" element={<StudentDetail />} />
+              </Route>
               <Route path="/settings" element={<Settings />} />
             </Route>
 

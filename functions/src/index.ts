@@ -374,12 +374,14 @@ export const extractAnswerKey = onCall(
 
 export const runCsvExtraction = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in');
-  const { assignmentId, extractionResult } = request.data as {
+  const { assignmentId, extractedStudents, metadata, answerKey } = request.data as {
     assignmentId: string;
-    extractionResult: Record<string, unknown>;
+    extractedStudents: Array<Record<string, unknown>>;
+    metadata: Record<string, unknown>;
+    answerKey?: Array<{ questionNumber: number; correctAnswer: string; points?: number }>;
   };
   if (!assignmentId) throw new HttpsError('invalid-argument', 'assignmentId required');
-  if (!extractionResult) throw new HttpsError('invalid-argument', 'extractionResult required');
+  if (!extractedStudents) throw new HttpsError('invalid-argument', 'extractedStudents required');
 
   const assignmentDoc = await verifyOwnership(assignmentId, request.auth.uid);
   const assignment = assignmentDoc.data()!;
@@ -387,7 +389,8 @@ export const runCsvExtraction = onCall(async (request) => {
   // Normalize and store the extraction result from the frontend
   const extractionId = generateId();
   const normalizedResult = {
-    ...extractionResult,
+    extractedStudents,
+    metadata,
     extractionId,
     assignmentId,
     sourceType: 'csv',
@@ -395,8 +398,7 @@ export const runCsvExtraction = onCall(async (request) => {
 
   // Run roster matching
   const roster = await getRoster(assignment.classId);
-  const students = (extractionResult.extractedStudents as Array<Record<string, unknown>>) || [];
-  const extractedNames = students.map(
+  const extractedNames = extractedStudents.map(
     (s: Record<string, unknown>, i: number) => ({
       extractionIndex: i,
       rawName: ((s.rawName as string) || '').trim(),
@@ -404,12 +406,29 @@ export const runCsvExtraction = onCall(async (request) => {
   );
   const rosterMatchResult = matchRoster(extractedNames, roster, 0.7);
 
-  await db.collection('assignments').doc(assignmentId).update({
+  const updateData: Record<string, unknown> = {
     'pipelineState.extractionResult': normalizedResult,
     'pipelineState.rosterMatchResult': rosterMatchResult,
     status: 'needs_review',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  };
+
+  if (answerKey && answerKey.length > 0) {
+    updateData['answerKey'] = {
+      source: 'csv',
+      questions: answerKey.map((q) => ({
+        questionNumber: q.questionNumber,
+        correctAnswer: q.correctAnswer,
+        points: q.points ?? 1,
+        questionText: null,
+        answerChoices: null,
+        extraCredit: false,
+      })),
+    };
+    updateData['type'] = 'objective';
+  }
+
+  await db.collection('assignments').doc(assignmentId).update(updateData);
 
   return { success: true };
 });

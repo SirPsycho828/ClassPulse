@@ -249,6 +249,8 @@ export default function ClassOverview() {
                       fontSize: '12px',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid hsl(33, 16%, 83%)',
+                      backgroundColor: '#F8F5F0',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                     }}
                     formatter={(value) => [`${value} students`, 'Count']}
                   />

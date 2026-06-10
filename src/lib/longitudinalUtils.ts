@@ -1,5 +1,14 @@
 import type { Trend } from './summaryTypes';
 
+/** Format an ISO date string or Date as mm/dd/yyyy */
+export function formatDate(input: string | Date): string {
+  const d = typeof input === 'string' ? new Date(input) : input;
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${mm}/${dd}/${yyyy}`;
+}
+
 /**
  * Compute trend direction from an array of scores (oldest first).
  * Compares the last two values. Returns 'flat' if fewer than 2 values.

@@ -4,7 +4,7 @@ import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebas
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TrendArrow } from '@/components/ui/TrendArrow';
-import { computeTrend, findPersistentConcerns } from '@/lib/longitudinalUtils';
+import { computeTrend, findPersistentConcerns, formatDate } from '@/lib/longitudinalUtils';
 import type { AnalysisResult } from '@/lib/schemas';
 import {
   LineChart,
@@ -115,13 +115,23 @@ export default function StudentDetailLongitudinal() {
             if (assignDoc.exists()) title = assignDoc.data().title || 'Untitled';
           } catch { /* ignore */ }
 
+          // Build a skill tag -> display name map from analysis-level skillBreakdown
+          const skillNameMap = new Map<string, string>();
+          for (const sb of aData.skillBreakdown || []) {
+            skillNameMap.set(sb.skillTag, sb.displayName || sb.skillTag);
+          }
+
           studentAnalyses.push({
             analysisId: aData.analysisId,
             assignmentTitle: title,
             generatedAt: aData.generatedAt,
             totalScore: si.totalScore,
             percentile: si.percentile,
-            skillPerformance: si.skillPerformance || [],
+            skillPerformance: (si.skillPerformance || []).map((sp) => ({
+              skillTag: sp.skillTag,
+              displayName: skillNameMap.get(sp.skillTag) || sp.skillTag,
+              mastery: sp.mastery,
+            })),
           });
         }
 
@@ -148,7 +158,7 @@ export default function StudentDetailLongitudinal() {
     () =>
       analyses.map((a) => ({
         name: a.assignmentTitle,
-        date: new Date(a.generatedAt).toLocaleDateString(),
+        date: formatDate(a.generatedAt),
         score: Math.round(a.totalScore * 100),
         analysisId: a.analysisId,
       })),
@@ -167,7 +177,10 @@ export default function StudentDetailLongitudinal() {
         if (!map.has(sp.skillTag)) {
           map.set(sp.skillTag, { displayName: sp.displayName, entries: [] });
         }
-        map.get(sp.skillTag)!.entries.push({ mastery: sp.mastery, date: a.generatedAt });
+        const entry = map.get(sp.skillTag)!;
+        entry.entries.push({ mastery: sp.mastery, date: a.generatedAt });
+        // Keep latest display name
+        entry.displayName = sp.displayName;
       }
     }
 
@@ -177,7 +190,7 @@ export default function StudentDetailLongitudinal() {
       return {
         skillTag,
         displayName: data.displayName,
-        firstSeen: new Date(data.entries[0].date).toLocaleDateString(),
+        firstSeen: formatDate(data.entries[0].date),
         latestMastery: latest,
         trend: computeTrend(masteries),
         timesAssessed: data.entries.length,
@@ -275,7 +288,8 @@ export default function StudentDetailLongitudinal() {
                       fontSize: '12px',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid hsl(33, 16%, 83%)',
-                      backgroundColor: 'hsl(var(--card))',
+                      backgroundColor: '#F8F5F0',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                     }}
                     formatter={(value: number) => [`${value}%`, 'Score']}
                   />
@@ -290,16 +304,45 @@ export default function StudentDetailLongitudinal() {
                 </LineChart>
               )}
             </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {analyses.map((a) => (
-                <Link
-                  key={a.analysisId}
-                  to={`/analysis/${a.analysisId}/student/${studentId}`}
-                  className="text-xs text-primary hover:underline"
-                >
-                  {a.assignmentTitle} &rarr;
-                </Link>
-              ))}
+          </section>
+
+          {/* Assessment History Table */}
+          <section className="bg-card border border-border rounded-[--radius-md] p-5">
+            <h2 className="font-heading text-lg font-semibold text-foreground mb-4">Assessment History</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Assignment</th>
+                    <th className="text-left py-2 px-4 text-muted-foreground font-medium">Date</th>
+                    <th className="text-center py-2 px-4 text-muted-foreground font-medium">Score</th>
+                    <th className="text-center py-2 px-4 text-muted-foreground font-medium">Percentile</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...analyses].reverse().map((a) => (
+                    <tr key={a.analysisId} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="py-2.5 pr-4">
+                        <Link
+                          to={`/analysis/${a.analysisId}/student/${studentId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {a.assignmentTitle}
+                        </Link>
+                      </td>
+                      <td className="py-2.5 px-4 text-muted-foreground">
+                        {formatDate(a.generatedAt)}
+                      </td>
+                      <td className="py-2.5 px-4 text-center font-medium">
+                        {Math.round(a.totalScore * 100)}%
+                      </td>
+                      <td className="py-2.5 px-4 text-center text-muted-foreground">
+                        {Math.round(a.percentile)}th
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 

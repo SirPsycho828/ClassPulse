@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useClassDetailContext } from '@/components/layout/ClassDetailLayout';
 import { findRecurringProblemSkills } from '@/lib/longitudinalUtils';
+import { formatDate } from '@/lib/longitudinalUtils';
 import {
   LineChart,
   Line,
@@ -38,7 +40,7 @@ function trendColor(trend: string) {
 export default function ClassDetailOverview() {
   const { analyses } = useClassDetailContext();
 
-  // Chart container sizing (same pattern as ClassOverview)
+  // Chart container sizing
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [chartSize, setChartSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function ClassDetailOverview() {
     () =>
       analyses.map((a) => ({
         name: a.assignmentTitle,
-        date: new Date(a.generatedAt).toLocaleDateString(),
+        date: formatDate(a.generatedAt),
         mean: Math.round(a.classSummary.meanScore * 100),
         median: Math.round(a.classSummary.medianScore * 100),
         analysisId: a.analysisId,
@@ -121,7 +123,8 @@ export default function ClassDetailOverview() {
                   fontSize: '12px',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid hsl(33, 16%, 83%)',
-                  backgroundColor: 'hsl(var(--card))',
+                  backgroundColor: '#F8F5F0',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                 }}
                 formatter={(value: number, name: string) => [`${value}%`, name === 'mean' ? 'Mean' : 'Median']}
                 labelFormatter={(label) => label}
@@ -149,9 +152,53 @@ export default function ClassDetailOverview() {
         </div>
         {analyses.length > 1 && (
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Solid line = mean, dashed line = median. Click a point to view the analysis.
+            Solid line = mean, dashed line = median
           </p>
         )}
+      </section>
+
+      {/* Analysis History Table */}
+      <section className="bg-card border border-border rounded-[--radius-md] p-5">
+        <h2 className="font-heading text-lg font-semibold text-foreground mb-4">Analysis History</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Assignment</th>
+                <th className="text-left py-2 px-4 text-muted-foreground font-medium">Date</th>
+                <th className="text-center py-2 px-4 text-muted-foreground font-medium">Mean</th>
+                <th className="text-center py-2 px-4 text-muted-foreground font-medium">Median</th>
+                <th className="text-center py-2 px-4 text-muted-foreground font-medium">Students</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...analyses].reverse().map((a) => (
+                <tr key={a.analysisId} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                  <td className="py-2.5 pr-4">
+                    <Link
+                      to={`/analysis/${a.analysisId}/class`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {a.assignmentTitle}
+                    </Link>
+                  </td>
+                  <td className="py-2.5 px-4 text-muted-foreground">
+                    {formatDate(a.generatedAt)}
+                  </td>
+                  <td className="py-2.5 px-4 text-center font-medium">
+                    {Math.round(a.classSummary.meanScore * 100)}%
+                  </td>
+                  <td className="py-2.5 px-4 text-center font-medium">
+                    {Math.round(a.classSummary.medianScore * 100)}%
+                  </td>
+                  <td className="py-2.5 px-4 text-center text-muted-foreground">
+                    {a.classSummary.studentsAnalyzed}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* Recurring Problem Skills */}

@@ -6,32 +6,35 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ClassForm } from '@/components/ClassForm';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { TrendArrow } from '@/components/ui/TrendArrow';
-import type { ClassSummaryDoc } from '@/lib/summaryTypes';
+import { computeTrend, buildSparklineData, formatDate } from '@/lib/longitudinalUtils';
+import type { Trend } from '@/lib/summaryTypes';
+import type { AnalysisResult } from '@/lib/schemas';
 import { Plus, Search, GraduationCap, Loader2 } from 'lucide-react';
+
+interface ClassCard {
+  id: string;
+  name: string;
+  studentCount: number;
+  gradeLevel: string;
+  subject: string;
+  analysisCount: number;
+  latestMeanScore: number | null;
+  lastAnalysisDate: string | null;
+  trend: Trend;
+  sparklineData: number[];
+}
 
 export default function ClassesList() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [summaries, setSummaries] = useState<ClassSummaryDoc[]>([]);
   const [classes, setClasses] = useState<Array<{ id: string; name: string; studentCount: number; gradeLevel: string; subject: string }>>([]);
-  const [loading, setLoading] = useState(true);
+  const [analyses, setAnalyses] = useState<AnalysisResult[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingAnalyses, setLoadingAnalyses] = useState(true);
   const [showAddClass, setShowAddClass] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Subscribe to classSummaries
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, 'classSummaries'),
-      where('teacherId', '==', user.uid),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setSummaries(snap.docs.map((d) => d.data() as ClassSummaryDoc));
-    });
-    return unsub;
-  }, [user]);
-
-  // Subscribe to classes (for classes without summaries yet)
+  // Subscribe to classes
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -51,23 +54,58 @@ export default function ClassesList() {
           };
         }),
       );
-      setLoading(false);
+      setLoadingClasses(false);
     });
     return unsub;
   }, [user]);
 
-  // Merge: every class gets a card, enriched with summary data if available
+  // Subscribe to all analyses for this teacher
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'analyses'),
+      where('teacherId', '==', user.uid),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setAnalyses(snap.docs.map((d) => d.data() as AnalysisResult));
+      setLoadingAnalyses(false);
+    });
+    return unsub;
+  }, [user]);
+
+  const loading = loadingClasses || loadingAnalyses;
+
+  // Merge classes with computed analysis stats
   const mergedClasses = useMemo(() => {
-    const summaryMap = new Map(summaries.map((s) => [s.classId, s]));
+    // Group analyses by classId
+    const byClass = new Map<string, AnalysisResult[]>();
+    for (const a of analyses) {
+      const list = byClass.get(a.classId) || [];
+      list.push(a);
+      byClass.set(a.classId, list);
+    }
+
     return classes
-      .map((c) => ({
-        ...c,
-        summary: summaryMap.get(c.id) || null,
-      }))
+      .map((c): ClassCard => {
+        const classAnalyses = (byClass.get(c.id) || []).sort(
+          (a, b) => a.generatedAt.localeCompare(b.generatedAt),
+        );
+        const meanScores = classAnalyses.map((a) => a.classSummary.meanScore);
+        const latest = classAnalyses.length > 0 ? classAnalyses[classAnalyses.length - 1] : null;
+
+        return {
+          ...c,
+          analysisCount: classAnalyses.length,
+          latestMeanScore: latest ? latest.classSummary.meanScore : null,
+          lastAnalysisDate: latest ? latest.generatedAt : null,
+          trend: computeTrend(meanScores),
+          sparklineData: buildSparklineData(meanScores),
+        };
+      })
       .filter((c) =>
         c.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
-  }, [classes, summaries, searchQuery]);
+  }, [classes, analyses, searchQuery]);
 
   if (loading) {
     return (
@@ -134,27 +172,27 @@ export default function ClassesList() {
                 <h3 className="font-heading font-semibold text-foreground text-lg leading-tight">
                   {c.name}
                 </h3>
-                {c.summary && <TrendArrow trend={c.summary.trend} />}
+                {c.analysisCount > 0 && <TrendArrow trend={c.trend} />}
               </div>
 
               <p className="text-sm text-muted-foreground mb-3">
                 {c.studentCount} student{c.studentCount !== 1 ? 's' : ''}
-                {c.summary ? ` \u00b7 ${c.summary.analysisCount} analys${c.summary.analysisCount !== 1 ? 'es' : 'is'}` : ''}
+                {c.analysisCount > 0 ? ` \u00b7 ${c.analysisCount} analys${c.analysisCount !== 1 ? 'es' : 'is'}` : ''}
               </p>
 
-              {c.summary ? (
+              {c.latestMeanScore !== null && c.lastAnalysisDate ? (
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xl font-semibold text-foreground">
-                      {Math.round(c.summary.latestMeanScore * 100)}%
+                      {Math.round(c.latestMeanScore * 100)}%
                       <span className="text-sm font-normal text-muted-foreground ml-1">avg</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Last analyzed {new Date(c.summary.lastAnalysisDate).toLocaleDateString()}
+                      Last analyzed {formatDate(c.lastAnalysisDate)}
                     </p>
                   </div>
-                  {c.summary.sparklineData.length >= 2 && (
-                    <Sparkline data={c.summary.sparklineData} />
+                  {c.sparklineData.length >= 2 && (
+                    <Sparkline data={c.sparklineData} />
                   )}
                 </div>
               ) : (

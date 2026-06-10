@@ -4,6 +4,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClassDetailContext } from '@/components/layout/ClassDetailLayout';
+import { formatDate } from '@/lib/longitudinalUtils';
 import { Loader2, Zap } from 'lucide-react';
 
 interface InterventionRow {
@@ -81,7 +82,7 @@ export default function ClassDetailInterventions() {
               status: data.status || 'pending',
               analysisId: data.analysisId,
               assignmentTitle: analysisTitleMap.get(data.analysisId) || 'Unknown',
-              createdAt: data.createdAt?.toDate?.()?.toLocaleDateString() || '',
+              createdAt: data.createdAt?.toDate ? formatDate(data.createdAt.toDate()) : '',
             });
           }
         }

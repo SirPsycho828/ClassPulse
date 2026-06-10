@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDate } from '@/lib/longitudinalUtils';
 import { ClassForm } from '@/components/ClassForm';
 import {
   Plus,
@@ -102,13 +103,8 @@ const STATUS_CONFIG: Record<
   },
 };
 
-function formatDate(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+function formatDashboardDate(iso: string): string {
+  return formatDate(iso + 'T00:00:00');
 }
 
 function getNavigationPath(assignment: Assignment): string {
@@ -270,7 +266,7 @@ function AnalysisCard({
           <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs text-muted-foreground/70">
-              {formatDate(assignment.date)}
+              {formatDashboardDate(assignment.date)}
             </span>
             {summary && (
               <span className="text-xs text-muted-foreground">{summary}</span>

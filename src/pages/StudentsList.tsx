@@ -5,47 +5,131 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { TrendArrow } from '@/components/ui/TrendArrow';
-import type { StudentSummaryDoc } from '@/lib/summaryTypes';
+import { computeTrend, buildSparklineData, formatDate } from '@/lib/longitudinalUtils';
+import type { Trend } from '@/lib/summaryTypes';
+import type { AnalysisResult } from '@/lib/schemas';
 import { ChevronDown, ChevronUp, Loader2, Search, Users } from 'lucide-react';
+
+interface StudentRow {
+  classId: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  analysisCount: number;
+  latestScore: number;
+  lastAnalysisDate: string;
+  trend: Trend;
+  sparklineData: number[];
+}
 
 type SortKey = 'name' | 'class' | 'score' | 'trend' | 'date';
 type SortDir = 'asc' | 'desc';
 
 export default function StudentsList() {
   const { user } = useAuth();
-  const [summaries, setSummaries] = useState<StudentSummaryDoc[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisResult[]>([]);
+  const [classNames, setClassNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [loadingClasses, setLoadingClasses] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // Subscribe to studentSummaries
+  // Subscribe to analyses
   useEffect(() => {
     if (!user) return;
     const q = query(
-      collection(db, 'studentSummaries'),
+      collection(db, 'analyses'),
       where('teacherId', '==', user.uid),
     );
     const unsub = onSnapshot(q, (snap) => {
-      setSummaries(snap.docs.map((d) => d.data() as StudentSummaryDoc));
+      setAnalyses(snap.docs.map((d) => d.data() as AnalysisResult));
       setLoading(false);
     });
     return unsub;
   }, [user]);
 
+  // Subscribe to classes for names
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'classes'),
+      where('teacherId', '==', user.uid),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const map = new Map<string, string>();
+      for (const d of snap.docs) {
+        map.set(d.id, d.data().name || 'Unknown');
+      }
+      setClassNames(map);
+      setLoadingClasses(false);
+    });
+    return unsub;
+  }, [user]);
+
+  // Compute student rows from analyses
+  const students = useMemo(() => {
+    const map = new Map<string, {
+      classId: string;
+      studentId: string;
+      studentName: string;
+      scores: number[];
+      dates: string[];
+    }>();
+
+    // Sort analyses by date so scores are in chronological order
+    const sorted = [...analyses].sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
+
+    for (const a of sorted) {
+      for (const si of a.studentInsights) {
+        const key = `${a.classId}_${si.studentId}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            classId: a.classId,
+            studentId: si.studentId,
+            studentName: si.studentName,
+            scores: [],
+            dates: [],
+          });
+        }
+        const entry = map.get(key)!;
+        entry.scores.push(si.totalScore);
+        entry.dates.push(a.generatedAt);
+        entry.studentName = si.studentName;
+      }
+    }
+
+    const rows: StudentRow[] = [];
+    for (const [, data] of map) {
+      const latest = data.scores[data.scores.length - 1];
+      rows.push({
+        classId: data.classId,
+        studentId: data.studentId,
+        studentName: data.studentName,
+        className: classNames.get(data.classId) || 'Unknown',
+        analysisCount: data.scores.length,
+        latestScore: latest,
+        lastAnalysisDate: data.dates[data.dates.length - 1],
+        trend: computeTrend(data.scores),
+        sparklineData: buildSparklineData(data.scores),
+      });
+    }
+    return rows;
+  }, [analyses, classNames]);
+
   // Unique class list for filter dropdown
   const classList = useMemo(() => {
     const map = new Map<string, string>();
-    for (const s of summaries) {
+    for (const s of students) {
       map.set(s.classId, s.className);
     }
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [summaries]);
+  }, [students]);
 
   // Filter + sort
   const displayed = useMemo(() => {
-    let filtered = summaries;
+    let filtered = students;
 
     if (classFilter !== 'all') {
       filtered = filtered.filter((s) => s.classId === classFilter);
@@ -69,7 +153,7 @@ export default function StudentsList() {
       return sortDir === 'desc' ? -cmp : cmp;
     });
     return copy;
-  }, [summaries, classFilter, searchQuery, sortKey, sortDir]);
+  }, [students, classFilter, searchQuery, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -89,7 +173,7 @@ export default function StudentsList() {
     );
   }
 
-  if (loading) {
+  if (loading || loadingClasses) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -103,10 +187,10 @@ export default function StudentsList() {
       {/* Header */}
       <h1 className="font-heading text-2xl font-bold text-foreground">Students</h1>
 
-      {summaries.length === 0 ? (
+      {students.length === 0 ? (
         <div className="text-center py-16 bg-card border border-border rounded-[--radius-md]">
           <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-muted-foreground mb-2">No students yet. Add students to a class to get started.</p>
+          <p className="text-muted-foreground mb-2">No student data yet. Run an analysis to see students here.</p>
           <Link to="/classes" className="text-primary hover:underline text-sm">
             Go to Classes &rarr;
           </Link>
@@ -209,7 +293,7 @@ export default function StudentsList() {
                         </span>
                       </td>
                       <td className="py-2.5 px-4 text-muted-foreground">
-                        {new Date(s.lastAnalysisDate).toLocaleDateString()}
+                        {formatDate(s.lastAnalysisDate)}
                       </td>
                     </tr>
                   ))}

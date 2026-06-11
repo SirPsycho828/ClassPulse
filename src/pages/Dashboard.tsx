@@ -8,7 +8,8 @@ import {
   onSnapshot,
   getDocs,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/longitudinalUtils';
 import { ClassForm } from '@/components/ClassForm';
@@ -22,9 +23,12 @@ import {
   ChevronDown,
   Upload,
   X,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { GuidanceTip } from '@/components/ux/GuidanceTip';
 import { NextStepCard } from '@/components/ux/NextStepCard';
+import { useToast } from '@/components/ui/Toast';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -233,12 +237,14 @@ interface AnalysisCardProps {
   assignment: Assignment;
   className: string;
   pendingInterventions: number;
+  onDelete: (id: string, title: string) => void;
 }
 
 function AnalysisCard({
   assignment,
   className: clsName,
   pendingInterventions,
+  onDelete,
 }: AnalysisCardProps) {
   const navigate = useNavigate();
 
@@ -253,29 +259,42 @@ function AnalysisCard({
   const summary = buildSummary();
 
   return (
-    <button
-      type="button"
-      onClick={() => navigate(getNavigationPath(assignment))}
-      className="w-full text-left bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] p-4 card-hover cursor-pointer"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-heading text-sm font-semibold text-foreground truncate">
-            {assignment.title}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
-          <div className="flex items-center gap-3 mt-2">
-            <span className="text-xs text-muted-foreground/70">
-              {formatDashboardDate(assignment.date)}
-            </span>
-            {summary && (
-              <span className="text-xs text-muted-foreground">{summary}</span>
-            )}
+    <div className="relative group w-full bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] card-hover">
+      <button
+        type="button"
+        onClick={() => navigate(getNavigationPath(assignment))}
+        className="w-full text-left p-4 cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-heading text-sm font-semibold text-foreground truncate">
+              {assignment.title}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs text-muted-foreground/70">
+                {formatDashboardDate(assignment.date)}
+              </span>
+              {summary && (
+                <span className="text-xs text-muted-foreground">{summary}</span>
+              )}
+            </div>
           </div>
+          <StatusBadge status={assignment.status} />
         </div>
-        <StatusBadge status={assignment.status} />
-      </div>
-    </button>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(assignment.id, assignment.title);
+        }}
+        className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive hover:bg-destructive/10 transition-all"
+        title="Delete assessment"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -297,6 +316,29 @@ export default function Dashboard() {
   const [rangeDropdownOpen, setRangeDropdownOpen] = useState(false);
   const [showAddClass, setShowAddClass] = useState(false);
   const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const { toast } = useToast();
+
+  function handleDeleteRequest(id: string, title: string) {
+    setDeleteTarget({ id, title });
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const deleteFn = httpsCallable(functions, 'deleteAssignment');
+      await deleteFn({ assignmentId: deleteTarget.id });
+      toast('success', `"${deleteTarget.title}" deleted.`);
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      toast('error', 'Failed to delete assessment. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function toggleCollapsed(classId: string) {
     setCollapsedClasses((prev) => {
@@ -680,6 +722,7 @@ export default function Dashboard() {
                           assignment={a}
                           className={classDoc.name}
                           pendingInterventions={interventionCounts[a.id] ?? 0}
+                          onDelete={handleDeleteRequest}
                         />
                       ))}
                     </div>
@@ -729,6 +772,49 @@ export default function Dashboard() {
               }}
               onCancel={() => setShowAddClass(false)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-[--radius-md] shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <h2 className="font-heading text-base font-semibold text-foreground">
+                  Delete Assessment
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-foreground mb-6">
+              Delete <strong>"{deleteTarget.title}"</strong> and all its analysis data, interventions, and uploaded files?
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-full border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:bg-destructive/90 rounded-full transition-colors disabled:opacity-50"
+              >
+                {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

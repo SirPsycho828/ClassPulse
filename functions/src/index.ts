@@ -1392,3 +1392,66 @@ export const migrateDisplayNames = onCall(
     return { success: true, updated };
   },
 );
+
+// ---------------------------------------------------------------------------
+// Delete Assignment (and all related data)
+// ---------------------------------------------------------------------------
+
+export const deleteAssignment = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+
+  const { assignmentId } = request.data as { assignmentId: string };
+  if (!assignmentId) throw new HttpsError('invalid-argument', 'assignmentId required');
+
+  const assignDoc = await db.collection('assignments').doc(assignmentId).get();
+  if (!assignDoc.exists) throw new HttpsError('not-found', 'Assignment not found');
+
+  const assignment = assignDoc.data()!;
+  if (assignment.teacherId !== request.auth.uid) {
+    throw new HttpsError('permission-denied', 'Not your assignment');
+  }
+
+  const analysisId = assignment.analysisId as string | undefined;
+
+  // 1. Delete interventions linked to this assignment
+  const interventionsSnap = await db
+    .collection('interventions')
+    .where('assignmentId', '==', assignmentId)
+    .get();
+  if (!interventionsSnap.empty) {
+    const batch = db.batch();
+    interventionsSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  // 2. Delete analysis doc + usage subcollection
+  if (analysisId) {
+    const usageSnap = await db
+      .collection('analyses')
+      .doc(analysisId)
+      .collection('usage')
+      .get();
+    if (!usageSnap.empty) {
+      const batch = db.batch();
+      usageSnap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    await db.collection('analyses').doc(analysisId).delete();
+  }
+
+  // 3. Delete uploaded files from Storage
+  try {
+    const bucket = admin.storage().bucket();
+    const [files] = await bucket.getFiles({
+      prefix: `uploads/${assignment.teacherId}/${assignmentId}/`,
+    });
+    await Promise.all(files.map((f) => f.delete()));
+  } catch (err) {
+    console.warn('[deleteAssignment] Storage cleanup failed (non-fatal):', err);
+  }
+
+  // 4. Delete the assignment document itself
+  await db.collection('assignments').doc(assignmentId).delete();
+
+  return { success: true };
+});

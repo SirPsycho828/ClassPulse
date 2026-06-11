@@ -276,7 +276,7 @@ export function matchRoster(
   // Students on the roster who have no extraction match (absent / no submission)
   const unmatchedRosterStudents = roster
     .filter((s) => !matchedRosterIds.has(s.studentId))
-    .map((s) => s.studentId);
+    .map((s) => s.displayName || `${s.firstName} ${s.lastName}`.trim() || s.studentId);
 
   const confirmed = matches.filter((m) => m.status === 'confirmed').length;
   const needsReview = matches.filter((m) => m.status === 'needs_review').length;

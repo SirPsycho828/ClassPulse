@@ -124,7 +124,8 @@ export default function ReviewConfirm() {
         );
         const rosterList: RosterStudent[] = [];
         studentsSnap.forEach((s) => {
-          rosterList.push({ id: s.id, name: s.data().name ?? s.id });
+          const d = s.data();
+          rosterList.push({ id: s.id, name: d.displayName || d.name || s.id });
         });
         setRoster(rosterList);
         setUnmatchedRoster(matchResult.unmatchedRosterStudents ?? []);

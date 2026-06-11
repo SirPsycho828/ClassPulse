@@ -21,6 +21,7 @@ import {
   Loader2,
   AlertCircle,
   Download,
+  ArrowLeft,
 } from 'lucide-react';
 import { GuidanceTip } from '@/components/ux/GuidanceTip';
 
@@ -73,7 +74,7 @@ const CSV_MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 // Elapsed Timer
 // ---------------------------------------------------------------------------
 
-function ElapsedTimer({ startedAt }: { startedAt?: Date | null }) {
+function useElapsed(startedAt?: Date | null) {
   const [elapsed, setElapsed] = useState(() => {
     if (startedAt) return Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
     return 0;
@@ -94,22 +95,14 @@ function ElapsedTimer({ startedAt }: { startedAt?: Date | null }) {
   const seconds = elapsed % 60;
   const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-  return (
-    <div className="mt-6 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        {elapsed < 60
-          ? `This usually takes 1–3 minutes (${timeStr})`
-          : elapsed < 180
-            ? `Still working… AI is reading each paper (${timeStr})`
-            : `Almost there… (${timeStr})`}
-      </p>
-      {elapsed >= 15 && (
-        <div className="bg-primary/10 border border-primary/20 rounded-lg px-4 py-3 text-sm text-primary font-medium">
-          You can leave this page and come back later — your analysis will keep running.
-        </div>
-      )}
-    </div>
-  );
+  const statusMessage =
+    elapsed < 60
+      ? 'This usually takes 1–3 minutes'
+      : elapsed < 180
+        ? 'Still working… AI is analyzing each response'
+        : 'Almost there…';
+
+  return { elapsed, timeStr, statusMessage };
 }
 
 // ---------------------------------------------------------------------------
@@ -177,10 +170,14 @@ function ProcessingView({
     }
   }, [status, assignmentId, navigate]);
 
+  const { timeStr, statusMessage } = useElapsed(startedAt);
+
   if (status === 'error') {
     return (
       <div className="text-center py-12">
-        <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-4" />
+        <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-5">
+          <AlertCircle className="w-8 h-8 text-destructive" />
+        </div>
         <h2 className="font-heading text-lg font-semibold text-foreground mb-2">
           Something went wrong
         </h2>
@@ -189,7 +186,7 @@ function ProcessingView({
         </p>
         <button
           onClick={() => navigate('/dashboard', { replace: true })}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium"
+          className="bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           Back to Dashboard
         </button>
@@ -198,23 +195,38 @@ function ProcessingView({
   }
 
   return (
-    <div className="text-center py-12">
-      <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-      <h2 className="font-heading text-lg font-semibold text-foreground mb-6">
-        {isAnalysisPhase ? 'Running analysis...' : 'Reading student papers...'}
-      </h2>
+    <div className="text-center py-10 max-w-md mx-auto">
+      {/* Animated spinner with elapsed badge */}
+      <div className="relative w-20 h-20 mx-auto mb-6">
+        <div className="absolute inset-0 rounded-full border-4 border-primary/15" />
+        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-semibold text-primary tabular-nums">{timeStr}</span>
+        </div>
+      </div>
 
-      <div className="max-w-xs mx-auto space-y-3">
+      {/* Heading */}
+      <h2 className="font-heading text-xl font-semibold text-foreground mb-2">
+        {isAnalysisPhase ? 'Analyzing results' : 'Reading student papers'}
+      </h2>
+      <p className="text-sm text-muted-foreground mb-8">{statusMessage}</p>
+
+      {/* Step progress */}
+      <div className="max-w-xs mx-auto space-y-3 mb-8">
         {steps.map((s) => {
           const state = getStepState(s.key);
           return (
             <div key={s.key} className="flex items-center gap-3">
               {state === 'done' ? (
-                <Check className="w-5 h-5 text-success flex-shrink-0" />
+                <div className="w-6 h-6 rounded-full bg-success/15 flex items-center justify-center flex-shrink-0">
+                  <Check className="w-3.5 h-3.5 text-success" />
+                </div>
               ) : state === 'active' ? (
-                <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0" />
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                </div>
               ) : (
-                <div className="w-5 h-5 rounded-full border-2 border-input flex-shrink-0" />
+                <div className="w-6 h-6 rounded-full border-2 border-input flex-shrink-0" />
               )}
               <span
                 className={`text-sm ${
@@ -232,7 +244,22 @@ function ProcessingView({
         })}
       </div>
 
-      <ElapsedTimer startedAt={startedAt} />
+      {/* Navigate away callout — always visible */}
+      <div className="bg-primary/5 border border-primary/15 rounded-[--radius-md] px-5 py-4">
+        <p className="text-sm font-medium text-foreground mb-1">
+          You don't need to wait here
+        </p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Your analysis will keep running in the background. We'll have results ready when you come back.
+        </p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Go to Dashboard
+        </button>
+      </div>
     </div>
   );
 }

@@ -259,7 +259,7 @@ function AnalysisCard({
   const summary = buildSummary();
 
   return (
-    <div className="relative group w-full bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] card-hover">
+    <div className="w-full bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] card-hover">
       <button
         type="button"
         onClick={() => navigate(getNavigationPath(assignment))}
@@ -280,19 +280,21 @@ function AnalysisCard({
               )}
             </div>
           </div>
-          <StatusBadge status={assignment.status} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusBadge status={assignment.status} />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(assignment.id, assignment.title);
+              }}
+              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Delete assessment"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-      </button>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(assignment.id, assignment.title);
-        }}
-        className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
-        title="Delete assessment"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
       </button>
     </div>
   );

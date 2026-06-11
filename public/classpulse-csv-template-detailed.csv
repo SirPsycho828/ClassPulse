@@ -1,7 +1,9 @@
-Student Name,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10
-ANSWER KEY,B,C,A,D,B,C,A,B,D,C
-Emma Johnson,B,C,A,D,B,C,A,B,D,C
-Marcus Rivera,B,A,A,D,B,C,A,B,D,A
-Sophia Chen,A,C,A,D,C,C,B,A,D,C
-Liam Carter,B,C,A,B,B,C,A,B,A,C
-Ava Mitchell,B,C,A,D,B,A,A,B,D,B
+Student Name,Q1,Q2,Q3,Q4,Q5
+QUESTION TEXT,What is 3+4?,Which is a noun?,Capital of France?,5 x 6 = ?,Largest planet?
+ANSWER KEY,7,dog,Paris,30,Jupiter
+POINTS,1,1,2,1,2
+Emma Johnson,7,dog,Paris,30,Jupiter
+Marcus Rivera,7,cat,Paris,30,Saturn
+Sophia Chen,8,dog,London,30,Jupiter
+Liam Carter,7,dog,Paris,25,Jupiter
+Ava Mitchell,6,dog,Paris,30,Mars

@@ -1,9 +1,11 @@
-Student Name,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10
-ANSWER KEY,C,A,B,D,C,A,B,D,A,C
-Ava Mitchell,C,A,B,D,C,A,B,A,A,D
-Ben Harrison,C,A,B,A,D,A,B,D,C,D
-Chloe Ramirez,C,A,B,D,C,A,B,D,A,B
-Diego Fernandez,C,A,B,D,C,D,A,D,A,D
-Emily Watson,C,A,B,D,C,A,B,D,A,C
-Finn O'Connor,C,D,A,D,C,A,B,D,C,D
-Giselle Laurent,C,A,B,D,C,A,B,D,C,B
+Student Name,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8
+QUESTION TEXT,What is 3/4 + 1/4?,Simplify 6/8,12 x 15 = ?,What is 25% of 80?,Round 3.456 to nearest tenth,Area of rectangle 5x8,Which fraction equals 0.5?,Order: 0.3 0.31 0.29
+ANSWER KEY,1,3/4,180,20,3.5,40,1/2,"0.29, 0.3, 0.31"
+POINTS,1,1,2,2,1,2,1,2
+Ava Mitchell,1,3/4,180,20,3.5,40,1/2,"0.29, 0.3, 0.31"
+Ben Harrison,1,3/4,180,15,3.5,40,1/4,"0.3, 0.29, 0.31"
+Chloe Ramirez,1,3/4,180,20,3.5,35,1/2,"0.29, 0.3, 0.31"
+Diego Fernandez,1,3/4,150,20,3.4,40,1/2,"0.29, 0.31, 0.3"
+Emily Watson,1,3/4,180,20,3.5,40,1/2,"0.29, 0.3, 0.31"
+Finn O'Connor,1,2/4,180,25,3.5,45,1/3,"0.3, 0.31, 0.29"
+Giselle Laurent,1,3/4,180,20,3.5,40,1/2,"0.3, 0.29, 0.31"

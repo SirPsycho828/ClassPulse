@@ -1,14 +1,16 @@
-Student Name,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10
-ANSWER KEY,A,C,B,D,A,C,B,D,A,C
-Jackson Lee,A,C,B,D,A,A,B,D,A,D
-Harper Kim,A,C,B,D,A,C,B,D,A,A
-Aiden Nguyen,A,C,B,D,A,D,D,A,C,D
-Riley Patel,A,C,B,D,A,C,B,D,A,C
-Carter Singh,A,C,B,D,A,C,A,D,A,D
-Zoey Chen,A,C,B,D,A,C,B,D,A,A
-Mason Ali,A,C,B,D,D,D,D,A,C,D
-Lily Okafor,A,C,B,D,A,C,B,D,A,C
-Owen Brooks,A,C,B,D,A,D,B,D,C,D
-Chloe Rivera,A,C,B,D,A,C,B,A,A,C
-Elijah Foster,A,C,B,D,A,C,A,D,A,D
-Nora Washington,A,C,B,D,A,C,B,D,A,A
+Student Name,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12
+QUESTION TEXT,Name the independent variable,Name the dependent variable,What is a control group?,State your hypothesis,Did the data support the hypothesis?,What tool measures mass?,What unit measures liquid volume?,Define observation vs inference,What is the first step of scientific method?,Name one source of error,Why do we repeat trials?,What could improve this experiment?
+ANSWER KEY,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,larger sample size
+POINTS,1,1,2,1,2,1,1,2,1,2,2,2
+Jackson Lee,sunlight,plant height,group with no change,B,yes,scale,milliliters,observation uses senses,ask a question,none,increase reliability,more plants
+Harper Kim,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,larger sample size
+Aiden Nguyen,light,growth,group with no change,A,no,balance,liters,both use senses,hypothesis,spilling,get more data,more time
+Riley Patel,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,larger sample size
+Carter Singh,sunlight,plant height,control has no change,B,yes,balance,milliliters,observation uses senses,ask a question,human error,reduce variables,more plants
+Zoey Chen,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,more plants
+Mason Ali,light,growth,unchanged group,A,no,thermometer,liters,same thing,observe,none,do it again,better tools
+Lily Okafor,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,larger sample size
+Owen Brooks,sunlight,plant height,group with no change,B,yes,balance,mL,observation uses senses,ask a question,temperature,increase accuracy,control temperature
+Chloe Rivera,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,research,measurement error,increase reliability,larger sample size
+Elijah Foster,sunlight,plant height,control group,B,yes,balance,milliliters,observation uses senses,ask a question,human error,increase reliability,more plants
+Nora Washington,sunlight,plant height,group with no change,B,yes,balance,milliliters,observation uses senses,ask a question,measurement error,increase reliability,larger sample size

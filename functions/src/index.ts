@@ -561,6 +561,12 @@ export const runAnalysis = onCall(
 
     const assignmentDoc = await verifyOwnership(assignmentId, request.auth.uid);
     const assignment = assignmentDoc.data()!;
+
+    // Idempotency: skip if analysis already completed for this assignment
+    if (assignment.status === 'complete' && assignment.analysisId) {
+      return { success: true, analysisId: assignment.analysisId, skipped: true };
+    }
+
     const pipelineState = assignment.pipelineState || {};
     const validatedResult = pipelineState.validatedResult;
     if (!validatedResult) throw new HttpsError('failed-precondition', 'No validated data');
@@ -922,7 +928,8 @@ export const runAnalysis = onCall(
       // ---------------------------------------------------------------
       // Stage 4: Merge computed stats with AI content
       // ---------------------------------------------------------------
-      const analysisId = generateId();
+      // Use assignmentId as analysisId so re-runs overwrite instead of duplicating
+      const analysisId = assignmentId;
       const correctionCount = validatedStudents.reduce(
         (acc: number, s: { corrections?: unknown[] }) => acc + (s.corrections?.length || 0),
         0,
@@ -1121,7 +1128,17 @@ export const runAnalysis = onCall(
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // Stage 6: Create intervention documents
+      // Stage 6: Create intervention documents (clean up old ones first for idempotency)
+      const oldInterventions = await db
+        .collection('interventions')
+        .where('assignmentId', '==', assignmentId)
+        .get();
+      if (!oldInterventions.empty) {
+        const cleanupBatch = db.batch();
+        oldInterventions.docs.forEach((d) => cleanupBatch.delete(d.ref));
+        await cleanupBatch.commit();
+      }
+
       const batch = db.batch();
       for (const inv of interventions) {
         const invRef = db.collection('interventions').doc(inv.interventionId);

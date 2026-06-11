@@ -1257,13 +1257,18 @@ export default function Upload() {
         if (ts && !processingStartedAt) {
           setProcessingStartedAt(ts.toDate());
         }
-        // Recovery: if status is 'analyzing' but runAnalysis was never triggered, fire it
+        // Recovery: if status is stuck on 'analyzing' for over 30s, re-trigger
+        // (the backend has an idempotency guard so this is safe)
         if (data.status === 'analyzing' && !analysisTriggeredRef.current) {
-          analysisTriggeredRef.current = true;
-          const runAnalysis = httpsCallable(functions, 'runAnalysis');
-          runAnalysis({ assignmentId: id }).catch((err) =>
-            console.error('runAnalysis recovery error:', err),
-          );
+          const updatedAt = data.updatedAt?.toDate?.();
+          const stuckThreshold = 30_000; // 30 seconds
+          if (updatedAt && Date.now() - updatedAt.getTime() > stuckThreshold) {
+            analysisTriggeredRef.current = true;
+            const runAnalysis = httpsCallable(functions, 'runAnalysis');
+            runAnalysis({ assignmentId: id }).catch((err) =>
+              console.error('runAnalysis recovery error:', err),
+            );
+          }
         }
       }
     });

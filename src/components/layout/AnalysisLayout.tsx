@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation, Link, Outlet } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult, GradedResult } from '@/lib/schemas';
-import { AlertTriangle, BarChart3, Loader2, Users, Zap } from 'lucide-react';
+import { AlertTriangle, BarChart3, Loader2, Users, Zap, Calendar, Check, X } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
+import { formatDate } from '@/lib/longitudinalUtils';
 
 export interface AnalysisOutletContext {
   analysis: AnalysisResult;
   analysisDocId: string;
+  assignmentId: string;
   assignmentTitle: string;
+  assignmentDate: string;
+  setAssignmentDate: (d: string) => void;
   gradedResult: GradedResult | null;
   answerKeyQuestions: { questionNumber: number; questionText: string | null }[];
 }
@@ -27,6 +31,82 @@ const tabs = [
   { label: 'Interventions', path: '/interventions', icon: Zap },
 ];
 
+function EditableDate({
+  date,
+  assignmentId,
+  onSaved,
+}: {
+  date: string;
+  assignmentId: string;
+  onSaved: (d: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(date);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  async function save() {
+    if (!value || value === date) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'assignments', assignmentId), { date: value });
+      onSaved(value);
+      setEditing(false);
+    } catch {
+      toast('error', 'Failed to update date.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="px-2 py-1 border border-input rounded-[--radius-md] text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setValue(date); setEditing(false); }
+          }}
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          className="p-1 text-success hover:bg-success/10 rounded transition-colors"
+          title="Save"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={() => { setValue(date); setEditing(false); }}
+          className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors"
+          title="Cancel"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setValue(date); setEditing(true); }}
+      className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      title="Edit date"
+    >
+      <Calendar className="w-3.5 h-3.5" />
+      {date ? formatDate(date) : 'No date'}
+    </button>
+  );
+}
+
 export default function AnalysisLayout() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -38,6 +118,7 @@ export default function AnalysisLayout() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [analysisDocId, setAnalysisDocId] = useState('');
   const [assignmentTitle, setAssignmentTitle] = useState('');
+  const [assignmentDate, setAssignmentDate] = useState('');
   const [gradedResult, setGradedResult] = useState<GradedResult | null>(null);
   const [answerKeyQuestions, setAnswerKeyQuestions] = useState<
     { questionNumber: number; questionText: string | null }[]
@@ -64,6 +145,7 @@ export default function AnalysisLayout() {
         if (assignDoc.exists()) {
           const ad = assignDoc.data();
           setAssignmentTitle(ad.title ?? 'Untitled Assignment');
+          setAssignmentDate(ad.date ?? '');
 
           if (ad.pipelineState?.gradedResult) {
             setGradedResult(ad.pipelineState.gradedResult);
@@ -111,7 +193,10 @@ export default function AnalysisLayout() {
   const context: AnalysisOutletContext = {
     analysis,
     analysisDocId,
+    assignmentId: analysis.assignmentId,
     assignmentTitle,
+    assignmentDate,
+    setAssignmentDate,
     gradedResult,
     answerKeyQuestions,
   };
@@ -126,6 +211,16 @@ export default function AnalysisLayout() {
         <span className="mx-1.5">/</span>
         <span className="text-foreground">{assignmentTitle}</span>
       </nav>
+
+      {/* Title + editable date */}
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="font-heading text-2xl font-bold text-foreground">{assignmentTitle}</h1>
+        <EditableDate
+          date={assignmentDate}
+          assignmentId={analysis.assignmentId}
+          onSaved={setAssignmentDate}
+        />
+      </div>
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-border">

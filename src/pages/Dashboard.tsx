@@ -289,7 +289,7 @@ function AnalysisCard({
           e.stopPropagation();
           onDelete(assignment.id, assignment.title);
         }}
-        className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive hover:bg-destructive/10 transition-all"
+        className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
         title="Delete assessment"
       >
         <Trash2 className="w-3.5 h-3.5" />
@@ -317,21 +317,24 @@ export default function Dashboard() {
   const [showAddClass, setShowAddClass] = useState(false);
   const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   function handleDeleteRequest(id: string, title: string) {
     setDeleteTarget({ id, title });
+    setDeleteConfirmText('');
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleteConfirmText !== 'DELETE') return;
     setDeleting(true);
     try {
       const deleteFn = httpsCallable(functions, 'deleteAssignment');
       await deleteFn({ assignmentId: deleteTarget.id });
       toast('success', `"${deleteTarget.title}" deleted.`);
       setDeleteTarget(null);
+      setDeleteConfirmText('');
     } catch (err) {
       console.error('Delete failed:', err);
       toast('error', 'Failed to delete assessment. Please try again.');
@@ -793,13 +796,29 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <p className="text-sm text-foreground mb-6">
+            <p className="text-sm text-foreground mb-4">
               Delete <strong>"{deleteTarget.title}"</strong> and all its analysis data, interventions, and uploaded files?
             </p>
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                Type <span className="font-mono font-bold text-foreground">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full border border-input rounded-[--radius-md] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-destructive/50 focus:border-destructive placeholder:text-muted-foreground/40"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deleteConfirmText === 'DELETE') handleDeleteConfirm();
+                }}
+              />
+            </div>
             <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => { setDeleteTarget(null); setDeleteConfirmText(''); }}
                 disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-full border border-border hover:bg-muted transition-colors"
               >
@@ -808,8 +827,8 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:bg-destructive/90 rounded-full transition-colors disabled:opacity-50"
+                disabled={deleting || deleteConfirmText !== 'DELETE'}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:bg-destructive/90 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {deleting ? 'Deleting…' : 'Delete'}

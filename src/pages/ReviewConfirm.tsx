@@ -27,6 +27,7 @@ import {
   UserPlus,
   Loader2,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 
 // ---- local types ----
@@ -89,6 +90,24 @@ export default function ReviewConfirm() {
   const [unmatchedRoster, setUnmatchedRoster] = useState<string[]>([]);
   const [assignmentTitle, setAssignmentTitle] = useState('');
   const [confirmedCollapsed, setConfirmedCollapsed] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!id || deleteConfirmText !== 'DELETE') return;
+    setDeleting(true);
+    try {
+      const deleteFn = httpsCallable(functions, 'deleteAssignment');
+      await deleteFn({ assignmentId: id });
+      toast('success', `"${assignmentTitle}" deleted.`);
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      console.error('Delete failed:', err);
+      toast('error', 'Failed to delete assessment. Please try again.');
+      setDeleting(false);
+    }
+  }
 
   // ---- load data ----
   useEffect(() => {
@@ -471,11 +490,21 @@ export default function ReviewConfirm() {
       </nav>
 
       {/* Header */}
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-foreground">Review & Confirm</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Verify extracted student data before analysis.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-foreground">Review & Confirm</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Verify extracted student data before analysis.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-[--radius-md] transition-colors"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete
+        </button>
       </div>
 
       {/* Metrics bar */}
@@ -602,6 +631,65 @@ export default function ReviewConfirm() {
         <p className="text-xs text-muted-foreground text-right">
           Resolve all yellow/red rows before confirming.
         </p>
+      )}
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-[--radius-md] shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <h2 className="font-heading text-base font-semibold text-foreground">
+                  Delete Assessment
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-foreground mb-4">
+              Delete <strong>"{assignmentTitle}"</strong> and all its extracted data and uploaded files?
+            </p>
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                Type <span className="font-mono font-bold text-foreground">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full border border-input rounded-[--radius-md] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-destructive/50 focus:border-destructive placeholder:text-muted-foreground/40"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deleteConfirmText === 'DELETE') handleDelete();
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-full border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting || deleteConfirmText !== 'DELETE'}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:bg-destructive/90 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -811,7 +811,9 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
               const num = parseInt(header.replace(/\D/g, ''), 10) || (i + 1);
               return {
                 questionNumber: num,
-                answer: row[colIdx]?.trim() ?? '',
+                extractedAnswer: row[colIdx]?.trim() ?? '',
+                confidence: 1.0,
+                multipleAnswersDetected: false,
               };
             });
 

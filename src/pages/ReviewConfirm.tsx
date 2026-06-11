@@ -267,7 +267,7 @@ export default function ReviewConfirm() {
           rememberAlias: r.rememberAlias,
           answers: (r.answers || []).map((a) => ({
             questionNumber: a.questionNumber,
-            answer: a.extractedAnswer ?? '',
+            answer: a.extractedAnswer ?? (a as Record<string, unknown>).answer as string ?? '',
           })),
           totalScore: r.totalScore,
           sourceImagePath: r.sourceImagePath,

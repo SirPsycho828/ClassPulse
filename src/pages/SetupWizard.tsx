@@ -834,7 +834,8 @@ export default function SetupWizard() {
 
   // Determine steps
   const isPathB = assignmentType === 'objective';
-  const stepLabels = isPathB
+  const needsAnswerKeyStep = isPathB && uploadMode !== 'csv';
+  const stepLabels = needsAnswerKeyStep
     ? ['Class', 'Details', 'Answer Key']
     : ['Class', 'Details'];
 
@@ -1070,9 +1071,9 @@ export default function SetupWizard() {
   async function createAssignment(): Promise<string | null> {
     if (!user || !selectedClassId) return null;
 
-    // Build answer key for Path B
+    // Build answer key for Path B (skip for CSV — answer key comes from the file)
     let answerKey: AnswerKey | null = null;
-    if (isPathB) {
+    if (needsAnswerKeyStep) {
       const activeRows = answerKeyEntryMode === 'photo' ? photoExtractedRows : answerKeyRows;
       const source = answerKeyEntryMode === 'photo' ? 'image' : 'manual';
 
@@ -1133,11 +1134,11 @@ export default function SetupWizard() {
     } else if (step === 1) {
       if (!canAdvanceStep2) return;
 
-      if (isPathB) {
-        // Go to step 3 (answer key)
+      if (needsAnswerKeyStep) {
+        // Go to step 3 (answer key) — only for objective + non-CSV
         setStep(2);
       } else {
-        // Path A: create assignment and go to upload
+        // Already Scored, or objective + CSV (answer key comes from CSV)
         setCreating(true);
         const id = await createAssignment();
         setCreating(false);
@@ -1205,7 +1206,7 @@ export default function SetupWizard() {
         )}
 
         {/* Step 3 */}
-        {step === 2 && isPathB && (
+        {step === 2 && needsAnswerKeyStep && (
           <StepAnswerKey
             rows={answerKeyRows}
             setRows={setAnswerKeyRows}
@@ -1259,12 +1260,12 @@ export default function SetupWizard() {
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Creating...
                 </>
-              ) : step === 2 && isPathB ? (
+              ) : step === 2 && needsAnswerKeyStep ? (
                 <>
                   Start Analysis
                   <ChevronRight className="w-4 h-4" />
                 </>
-              ) : step === 1 && !isPathB ? (
+              ) : step === 1 && !needsAnswerKeyStep ? (
                 <>
                   Continue to Upload
                   <ChevronRight className="w-4 h-4" />

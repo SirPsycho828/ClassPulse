@@ -378,7 +378,12 @@ export const runCsvExtraction = onCall(async (request) => {
     assignmentId: string;
     extractedStudents: Array<Record<string, unknown>>;
     metadata: Record<string, unknown>;
-    answerKey?: Array<{ questionNumber: number; correctAnswer: string; points?: number }>;
+    answerKey?: Array<{
+      questionNumber: number;
+      correctAnswer: string;
+      points?: number;
+      questionText?: string | null;
+    }>;
   };
   if (!assignmentId) throw new HttpsError('invalid-argument', 'assignmentId required');
   if (!extractedStudents) throw new HttpsError('invalid-argument', 'extractedStudents required');
@@ -414,18 +419,27 @@ export const runCsvExtraction = onCall(async (request) => {
   };
 
   if (answerKey && answerKey.length > 0) {
+    const totalPoints = answerKey.reduce((sum, q) => sum + (q.points ?? 1), 0);
+    const questionCount = answerKey.length;
+    const hasQuestionText = answerKey.some((q) => q.questionText);
+
     updateData['answerKey'] = {
       source: 'csv',
       questions: answerKey.map((q) => ({
         questionNumber: q.questionNumber,
         correctAnswer: q.correctAnswer,
         points: q.points ?? 1,
-        questionText: null,
+        questionText: q.questionText ?? null,
         answerChoices: null,
         extraCredit: false,
       })),
     };
     updateData['type'] = 'objective';
+    updateData['totalPoints'] = totalPoints;
+    updateData['questionCount'] = questionCount;
+    updateData['csvHasQuestionText'] = hasQuestionText;
+  } else {
+    updateData['type'] = 'scored';
   }
 
   await db.collection('assignments').doc(assignmentId).update(updateData);
@@ -616,6 +630,22 @@ export const runAnalysis = onCall(
       let skillUsage = null;
 
       if (hasPerQuestionData) {
+        // Check if we have meaningful question context for skill inference
+        const hasQuestionContext =
+          assignment.csvHasQuestionText ||
+          assignment.sourceType === 'image' ||
+          (assignment.answerKey?.questions || []).some(
+            (q: Record<string, unknown>) => q.questionText,
+          );
+
+        if (!hasQuestionContext) {
+          console.log('[runAnalysis] Skipping skill inference — CSV with no question text');
+          await db.collection('assignments').doc(assignmentId).update({
+            'pipelineState.skillInferenceSkipped': true,
+            'pipelineState.skillInferenceSkipReason':
+              'No question text provided in CSV. Add a QUESTION TEXT row to enable skill analysis.',
+          });
+        } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const questions: any[] = [];
         if (assignment.answerKey?.questions) {
@@ -711,6 +741,7 @@ export const runAnalysis = onCall(
             console.warn('[runAnalysis] Skill inference failed, proceeding without:', err);
           }
         }
+        } // end else (hasQuestionContext)
       }
 
       // ---------------------------------------------------------------

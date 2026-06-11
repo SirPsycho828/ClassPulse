@@ -6,7 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { resolveAnalysis } from '@/lib/resolveAnalysis';
 import { useToast } from '@/components/ui/Toast';
 import type { AnalysisResult, GradedResult } from '@/lib/schemas';
-import { AlertTriangle, BarChart3, Loader2, Users, Zap, Calendar, Check, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Loader2, Users, Zap, Calendar, Check, X, Trash2, Edit3 } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { useOutletContext } from 'react-router-dom';
 import { formatDate } from '@/lib/longitudinalUtils';
 
@@ -98,11 +100,12 @@ function EditableDate({
   return (
     <button
       onClick={() => { setValue(date); setEditing(true); }}
-      className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      title="Edit date"
+      className="group/date flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border border-transparent hover:border-input rounded-[--radius-md] px-2 py-1 -mx-2 transition-all"
+      title="Click to edit date"
     >
       <Calendar className="w-3.5 h-3.5" />
       {date ? formatDate(date) : 'No date'}
+      <Edit3 className="w-3 h-3 opacity-0 group-hover/date:opacity-60 transition-opacity" />
     </button>
   );
 }
@@ -119,6 +122,9 @@ export default function AnalysisLayout() {
   const [analysisDocId, setAnalysisDocId] = useState('');
   const [assignmentTitle, setAssignmentTitle] = useState('');
   const [assignmentDate, setAssignmentDate] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [gradedResult, setGradedResult] = useState<GradedResult | null>(null);
   const [answerKeyQuestions, setAnswerKeyQuestions] = useState<
     { questionNumber: number; questionText: string | null }[]
@@ -212,14 +218,25 @@ export default function AnalysisLayout() {
         <span className="text-foreground">{assignmentTitle}</span>
       </nav>
 
-      {/* Title + editable date */}
-      <div className="flex items-baseline justify-between gap-4">
+      {/* Title + date + delete */}
+      <div className="flex items-center justify-between gap-4">
         <h1 className="font-heading text-2xl font-bold text-foreground">{assignmentTitle}</h1>
-        <EditableDate
-          date={assignmentDate}
-          assignmentId={analysis.assignmentId}
-          onSaved={setAssignmentDate}
-        />
+        <div className="flex items-center gap-2">
+          <EditableDate
+            date={assignmentDate}
+            assignmentId={analysis.assignmentId}
+            onSaved={setAssignmentDate}
+          />
+          <span className="text-border">|</span>
+          <button
+            type="button"
+            onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); }}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-[--radius-md] px-2 py-1 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -272,6 +289,90 @@ export default function AnalysisLayout() {
 
       {/* Child route content */}
       <Outlet context={context} />
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-[--radius-md] shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <h2 className="font-heading text-base font-semibold text-foreground">
+                  Delete Assessment
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-foreground mb-4">
+              Delete <strong>"{assignmentTitle}"</strong> and all its analysis data, interventions, and uploaded files?
+            </p>
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                Type <span className="font-mono font-bold text-foreground">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full border border-input rounded-[--radius-md] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-destructive/50 focus:border-destructive placeholder:text-muted-foreground/40"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && deleteConfirmText === 'DELETE') {
+                    setDeleting(true);
+                    const deleteFn = httpsCallable(functions, 'deleteAssignment');
+                    deleteFn({ assignmentId: analysis.assignmentId })
+                      .then(() => {
+                        toast('success', `"${assignmentTitle}" deleted.`);
+                        navigate('/dashboard', { replace: true });
+                      })
+                      .catch(() => {
+                        toast('error', 'Failed to delete. Please try again.');
+                        setDeleting(false);
+                      });
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-full border border-border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteConfirmText !== 'DELETE') return;
+                  setDeleting(true);
+                  const deleteFn = httpsCallable(functions, 'deleteAssignment');
+                  deleteFn({ assignmentId: analysis.assignmentId })
+                    .then(() => {
+                      toast('success', `"${assignmentTitle}" deleted.`);
+                      navigate('/dashboard', { replace: true });
+                    })
+                    .catch(() => {
+                      toast('error', 'Failed to delete. Please try again.');
+                      setDeleting(false);
+                    });
+                }}
+                disabled={deleting || deleteConfirmText !== 'DELETE'}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:bg-destructive/90 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

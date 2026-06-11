@@ -14,7 +14,7 @@ import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import ClassForm from '@/components/ClassForm';
-import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle, Upload, Camera } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Loader2, AlertCircle, Upload, Camera, Download } from 'lucide-react';
 import type { AnswerKey, AnswerKeyQuestion } from '@/lib/schemas';
 
 // ---------------------------------------------------------------------------
@@ -331,6 +331,7 @@ function StepAssignmentDetails({
       </div>
 
       {/* Assignment Type */}
+      {uploadMode !== 'csv' && (
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">
           Assignment Type
@@ -352,6 +353,7 @@ function StepAssignmentDetails({
           onChange={setAssignmentType}
         />
       </div>
+      )}
 
       {/* Upload Mode */}
       <div>
@@ -371,31 +373,40 @@ function StepAssignmentDetails({
       {/* CSV format guidance */}
       {uploadMode === 'csv' && (
         <div className="bg-primary/5 border border-primary/15 rounded-[--radius-md] p-4">
-          {assignmentType === 'objective' ? (
-            <>
-              <p className="text-sm font-semibold text-primary mb-2">CSV Format for "Grade For Me"</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Your CSV should have a <strong>Student Name</strong> column and answer columns labeled <strong>Q1, Q2, Q3...</strong> with each student's selected answer (A, B, C, D, etc.).
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed mt-1.5">
-                Include an <strong>ANSWER KEY</strong> row with the correct answers so ClassPulse can grade automatically, detect misconceptions, and identify skill gaps.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-primary mb-2">CSV Format for "Already Scored"</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Your CSV should have a <strong>Student Name</strong> column and a <strong>Score</strong> column with each student's grade (e.g., 85, 92, 78).
-              </p>
-            </>
-          )}
-          <p className="text-xs text-muted-foreground mt-2 italic">
-            A downloadable template will be available on the upload page.
+          <p className="text-sm font-semibold text-primary mb-2">CSV Upload</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            ClassPulse auto-detects your CSV format. Two formats are supported:
           </p>
+          <ul className="text-xs text-muted-foreground mt-2 space-y-1.5 list-disc list-inside">
+            <li><strong>Already Scored:</strong> Student Name + Score columns</li>
+            <li><strong>Grade For Me:</strong> Student Name + Q1, Q2, Q3... columns with an <strong>ANSWER KEY</strong> row</li>
+          </ul>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            Optional rows: <strong>QUESTION TEXT</strong> (enables skill analysis) and <strong>POINTS</strong> (per-question weighting, defaults to 1).
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <a
+              href="/classpulse-csv-template.csv"
+              download
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Scored template
+            </a>
+            <a
+              href="/classpulse-csv-template-detailed.csv"
+              download
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Grade For Me template
+            </a>
+          </div>
         </div>
       )}
 
       {/* Total Points */}
+      {uploadMode !== 'csv' && (
       <div>
         <label htmlFor="totalPoints" className="block text-sm font-medium text-foreground mb-1">
           Total Points {isPathB && <span className="text-destructive">*</span>}
@@ -412,8 +423,10 @@ function StepAssignmentDetails({
           className="w-full px-3 py-2 border border-input rounded-[--radius-md] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         />
       </div>
+      )}
 
       {/* Question Count */}
+      {uploadMode !== 'csv' && (
       <div>
         <label htmlFor="questionCount" className="block text-sm font-medium text-foreground mb-1">
           Question Count {isPathB && <span className="text-destructive">*</span>}
@@ -430,6 +443,7 @@ function StepAssignmentDetails({
           className="w-full px-3 py-2 border border-input rounded-[--radius-md] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         />
       </div>
+      )}
 
       {/* Learning Objectives */}
       <div>
@@ -1046,12 +1060,13 @@ export default function SetupWizard() {
   const canAdvanceStep1 = selectedClassId !== null;
   const canAdvanceStep2 = useMemo(() => {
     if (!title.trim()) return false;
+    if (uploadMode === 'csv') return true;
     if (isPathB) {
       if (!totalPoints || parseFloat(totalPoints) <= 0) return false;
       if (!questionCount || parseInt(questionCount, 10) <= 0) return false;
     }
     return true;
-  }, [title, isPathB, totalPoints, questionCount]);
+  }, [title, isPathB, totalPoints, questionCount, uploadMode]);
 
   const canAdvanceStep3 = useMemo(() => {
     if (answerKeyEntryMode === 'type') {
@@ -1094,10 +1109,10 @@ export default function SetupWizard() {
       classId: selectedClassId,
       teacherId: user.uid,
       title: title.trim(),
-      type: assignmentType === 'scored' ? 'scored' : 'objective',
+      type: uploadMode === 'csv' ? null : (assignmentType === 'scored' ? 'scored' : 'objective'),
       date: new Date().toISOString().split('T')[0],
-      totalPoints: totalPoints ? parseFloat(totalPoints) : null,
-      questionCount: questionCount ? parseInt(questionCount, 10) : null,
+      totalPoints: uploadMode === 'csv' ? null : (totalPoints ? parseFloat(totalPoints) : null),
+      questionCount: uploadMode === 'csv' ? null : (questionCount ? parseInt(questionCount, 10) : null),
       learningObjectives: learningObjectives.trim() || null,
       answerKey,
       sourceType: uploadMode,

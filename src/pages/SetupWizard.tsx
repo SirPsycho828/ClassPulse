@@ -284,6 +284,8 @@ function StepClassSelection({
 function StepAssignmentDetails({
   title,
   setTitle,
+  assignmentDate,
+  setAssignmentDate,
   assignmentType,
   setAssignmentType,
   uploadMode,
@@ -297,6 +299,8 @@ function StepAssignmentDetails({
 }: {
   title: string;
   setTitle: (v: string) => void;
+  assignmentDate: string;
+  setAssignmentDate: (v: string) => void;
   assignmentType: AssignmentType;
   setAssignmentType: (v: AssignmentType) => void;
   uploadMode: UploadMode;
@@ -328,6 +332,23 @@ function StepAssignmentDetails({
           placeholder="e.g., Chapter 4 Quiz - Fractions"
           className="w-full px-3 py-2 border border-input rounded-[--radius-md] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         />
+      </div>
+
+      {/* Date */}
+      <div>
+        <label htmlFor="assignmentDate" className="block text-sm font-medium text-foreground mb-1">
+          Date Given
+        </label>
+        <input
+          id="assignmentDate"
+          type="date"
+          value={assignmentDate}
+          onChange={(e) => setAssignmentDate(e.target.value)}
+          className="w-full px-3 py-2 border border-input rounded-[--radius-md] text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          When was this given to students? Defaults to today.
+        </p>
       </div>
 
       {/* Assignment Type */}
@@ -824,6 +845,7 @@ export default function SetupWizard() {
 
   // Step 2 state
   const [title, setTitle] = useState('');
+  const [assignmentDate, setAssignmentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [assignmentType, setAssignmentType] = useState<AssignmentType>('scored');
   const [uploadMode, setUploadMode] = useState<UploadMode>('image');
   const [learningObjectives, setLearningObjectives] = useState('');
@@ -1110,7 +1132,7 @@ export default function SetupWizard() {
       teacherId: user.uid,
       title: title.trim(),
       type: uploadMode === 'csv' ? null : (assignmentType === 'scored' ? 'scored' : 'objective'),
-      date: new Date().toISOString().split('T')[0],
+      date: assignmentDate,
       totalPoints: uploadMode === 'csv' ? null : (totalPoints ? parseFloat(totalPoints) : null),
       questionCount: uploadMode === 'csv' ? null : (questionCount ? parseInt(questionCount, 10) : null),
       learningObjectives: learningObjectives.trim() || null,
@@ -1207,6 +1229,8 @@ export default function SetupWizard() {
           <StepAssignmentDetails
             title={title}
             setTitle={setTitle}
+            assignmentDate={assignmentDate}
+            setAssignmentDate={setAssignmentDate}
             assignmentType={assignmentType}
             setAssignmentType={setAssignmentType}
             uploadMode={uploadMode}

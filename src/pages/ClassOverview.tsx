@@ -412,6 +412,21 @@ export default function ClassOverview() {
           )}
         </section>
       )}
+
+      {skillBreakdown.length === 0 && (
+        <section className="bg-card border border-border rounded-[--radius-md] p-6">
+          <h2 className="font-heading text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            Skill Breakdown
+          </h2>
+          <div className="bg-amber-50 border border-amber-200 rounded-[--radius-md] p-4">
+            <p className="text-sm text-amber-800 font-medium">Skill analysis not available</p>
+            <p className="text-xs text-amber-700 mt-1">
+              This CSV upload only included answer letters — no question text was provided.
+              To enable skill breakdowns, add a <strong>QUESTION TEXT</strong> row to your CSV with what each question asks.
+            </p>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -259,43 +259,43 @@ function AnalysisCard({
   const summary = buildSummary();
 
   return (
-    <div className="w-full bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] card-hover">
-      <button
-        type="button"
-        onClick={() => navigate(getNavigationPath(assignment))}
-        className="w-full text-left p-4 cursor-pointer"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-heading text-sm font-semibold text-foreground truncate">
-              {assignment.title}
-            </h3>
-            <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-xs text-muted-foreground/70">
-                {formatDashboardDate(assignment.date)}
-              </span>
-              {summary && (
-                <span className="text-xs text-muted-foreground">{summary}</span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <StatusBadge status={assignment.status} />
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(assignment.id, assignment.title);
-              }}
-              className="p-1.5 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
-              title="Delete assessment"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(getNavigationPath(assignment))}
+      onKeyDown={(e) => { if (e.key === 'Enter') navigate(getNavigationPath(assignment)); }}
+      className="w-full text-left bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] p-4 card-hover cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-heading text-sm font-semibold text-foreground truncate">
+            {assignment.title}
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
+          <div className="flex items-center gap-3 mt-2">
+            <span className="text-xs text-muted-foreground/70">
+              {formatDashboardDate(assignment.date)}
+            </span>
+            {summary && (
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            )}
           </div>
         </div>
-      </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <StatusBadge status={assignment.status} />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(assignment.id, assignment.title);
+            }}
+            className="p-1.5 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+            title="Delete assessment"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

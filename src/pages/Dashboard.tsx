@@ -233,79 +233,13 @@ function StatusBadge({ status }: { status: AssignmentStatus }) {
   );
 }
 
-interface AnalysisCardProps {
-  assignment: Assignment;
-  className: string;
-  pendingInterventions: number;
-  onDelete: (id: string, title: string) => void;
-}
-
-function AnalysisCard({
-  assignment,
-  className: clsName,
-  pendingInterventions,
-  onDelete,
-}: AnalysisCardProps) {
-  const navigate = useNavigate();
-
-  function buildSummary(): string | null {
-    if (assignment.status !== 'complete') return null;
-    if (pendingInterventions > 0) {
-      return `${pendingInterventions} intervention${pendingInterventions === 1 ? '' : 's'} pending`;
-    }
-    return 'All interventions addressed';
-  }
-
-  const summary = buildSummary();
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => navigate(getNavigationPath(assignment))}
-      onKeyDown={(e) => { if (e.key === 'Enter') navigate(getNavigationPath(assignment)); }}
-      className="w-full text-left bg-card border border-border rounded-[--radius-md] shadow-[--shadow-sm] p-4 card-hover cursor-pointer"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-heading text-sm font-semibold text-foreground truncate">
-            {assignment.title}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-0.5">{clsName}</p>
-          <div className="flex items-center gap-3 mt-2">
-            <span className="text-xs text-muted-foreground/70">
-              {formatDashboardDate(assignment.date)}
-            </span>
-            {summary && (
-              <span className="text-xs text-muted-foreground">{summary}</span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <StatusBadge status={assignment.status} />
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(assignment.id, assignment.title);
-            }}
-            className="p-1.5 rounded-md text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
-            title="Delete assessment"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Dashboard Page
 // ---------------------------------------------------------------------------
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // State
@@ -720,16 +654,68 @@ export default function Dashboard() {
 
                 {!isCollapsed && (
                   classAssignments.length > 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pl-6">
-                      {classAssignments.map((a) => (
-                        <AnalysisCard
-                          key={a.id}
-                          assignment={a}
-                          className={classDoc.name}
-                          pendingInterventions={interventionCounts[a.id] ?? 0}
-                          onDelete={handleDeleteRequest}
-                        />
-                      ))}
+                    <div className="pl-6 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-xs text-muted-foreground uppercase tracking-wider">
+                            <th className="text-left font-medium py-2 pr-4">Assignment</th>
+                            <th className="text-left font-medium py-2 pr-4">Date</th>
+                            <th className="text-left font-medium py-2 pr-4">Status</th>
+                            <th className="text-left font-medium py-2 pr-4">Interventions</th>
+                            <th className="w-8 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {classAssignments.map((a) => {
+                            const pending = interventionCounts[a.id] ?? 0;
+                            return (
+                              <tr
+                                key={a.id}
+                                onClick={() => navigate(getNavigationPath(a))}
+                                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                              >
+                                <td className="py-2.5 pr-4">
+                                  <span className="font-medium text-foreground hover:text-primary">
+                                    {a.title}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">
+                                  {formatDashboardDate(a.date)}
+                                </td>
+                                <td className="py-2.5 pr-4">
+                                  <StatusBadge status={a.status} />
+                                </td>
+                                <td className="py-2.5 pr-4 text-muted-foreground">
+                                  {a.status === 'complete' ? (
+                                    pending > 0 ? (
+                                      <span className="text-warning font-medium">
+                                        {pending} pending
+                                      </span>
+                                    ) : (
+                                      <span className="text-success">All addressed</span>
+                                    )
+                                  ) : (
+                                    <span className="text-muted-foreground/50">&mdash;</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteRequest(a.id, a.title);
+                                    }}
+                                    className="p-1 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    title="Delete assessment"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     <div className="pl-6 py-4">

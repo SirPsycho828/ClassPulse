@@ -36,7 +36,6 @@ interface AssignmentDoc {
   teacherId: string;
   status: string;
   imageUrls: string[];
-  type?: 'scored' | 'objective';
 }
 
 interface UploadingFile {
@@ -609,7 +608,7 @@ function ImageUpload({
 // CSV Upload
 // ---------------------------------------------------------------------------
 
-function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; assignmentType: 'scored' | 'objective' }) {
+function CsvUpload({ assignmentId }: { assignmentId: string }) {
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -622,6 +621,11 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
   const [delimiter, setDelimiter] = useState(',');
   const [answerKeyRow, setAnswerKeyRow] = useState<string[] | null>(null);
   const [answerKeyRowIndex, setAnswerKeyRowIndex] = useState<number>(-1);
+  const [detectedType, setDetectedType] = useState<'scored' | 'objective' | null>(null);
+  const [questionTextRow, setQuestionTextRow] = useState<string[] | null>(null);
+  const [questionTextRowIndex, setQuestionTextRowIndex] = useState<number>(-1);
+  const [pointsRow, setPointsRow] = useState<string[] | null>(null);
+  const [pointsRowIndex, setPointsRowIndex] = useState<number>(-1);
 
   // Detect delimiter
   function detectDelimiter(text: string): string {
@@ -654,18 +658,23 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
     return { headers: headerLine, rows: dataRows };
   }
 
-  // Auto-detect column mappings
-  function autoDetectMappings(hdrs: string[], type: 'scored' | 'objective'): ColumnMapping[] {
+  // Auto-detect column mappings and CSV type
+  function autoDetectMappings(hdrs: string[]): { mappings: ColumnMapping[]; detected: 'scored' | 'objective' } {
     const namePatterns = /^(student|name|student.?name|full.?name|last.?name|first.?name)$/i;
     const scorePatterns = /^(score|grade|points|total|marks|result|percent|pct)$/i;
-    const questionPatterns = /^(q|#|question\s*)\d+$/i;
+    const questionPatterns = /^(q|question\s*)\d+$/i;
 
-    return hdrs.map((h) => {
+    const hasQuestionCols = hdrs.some((h) => questionPatterns.test(h));
+    const detected: 'scored' | 'objective' = hasQuestionCols ? 'objective' : 'scored';
+
+    const mappings = hdrs.map((h) => {
       if (namePatterns.test(h)) return { column: h, mappedTo: 'student_name' };
       if (scorePatterns.test(h)) return { column: h, mappedTo: 'score' };
-      if (type === 'objective' && questionPatterns.test(h)) return { column: h, mappedTo: 'question_answer' };
+      if (hasQuestionCols && questionPatterns.test(h)) return { column: h, mappedTo: 'question_answer' };
       return { column: h, mappedTo: 'ignore' };
     });
+
+    return { mappings, detected };
   }
 
   // Handle file selection
@@ -696,38 +705,54 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
     setHeaders(parsed.headers);
     setAllRows(parsed.rows);
 
-    // Auto-detect column mappings
-    setColumnMappings(autoDetectMappings(parsed.headers, assignmentType));
+    // Auto-detect column mappings and type
+    const { mappings, detected } = autoDetectMappings(parsed.headers);
+    setColumnMappings(mappings);
+    setDetectedType(detected);
 
-    // Answer key detection (objective assignments only)
+    // Detect metadata rows
+    const namePatterns = /^(student|name|student.?name|full.?name|last.?name|first.?name)$/i;
+    const nameIdx = parsed.headers.findIndex((h) => namePatterns.test(h));
+
     let detectedKeyIdx = -1;
-    if (assignmentType === 'objective') {
-      const namePatterns = /^(student|name|student.?name|full.?name|last.?name|first.?name)$/i;
-      const nameIdx = parsed.headers.findIndex((h) => namePatterns.test(h));
-      if (nameIdx !== -1) {
-        const keyPatterns = /^(answer\s*key|key|correct|answer)$/i;
-        const keyIdx = parsed.rows.findIndex((row) => keyPatterns.test(row[nameIdx]?.trim() ?? ''));
-        if (keyIdx !== -1) {
-          detectedKeyIdx = keyIdx;
-          setAnswerKeyRow(parsed.rows[keyIdx]);
-          setAnswerKeyRowIndex(keyIdx);
-        } else {
-          setAnswerKeyRow(null);
-          setAnswerKeyRowIndex(-1);
+    let detectedTextIdx = -1;
+    let detectedPointsIdx = -1;
+
+    if (nameIdx !== -1) {
+      const keyPatterns = /^(answer\s*key|key|correct|answer)$/i;
+      const textPatterns = /^(question\s*text|questions?|text|prompt)$/i;
+      const pointsPatterns = /^(points?|weight|value|pts)$/i;
+
+      for (let i = 0; i < parsed.rows.length; i++) {
+        const cellValue = parsed.rows[i][nameIdx]?.trim() ?? '';
+        if (keyPatterns.test(cellValue)) {
+          detectedKeyIdx = i;
+          setAnswerKeyRow(parsed.rows[i]);
+          setAnswerKeyRowIndex(i);
+        } else if (textPatterns.test(cellValue)) {
+          detectedTextIdx = i;
+          setQuestionTextRow(parsed.rows[i]);
+          setQuestionTextRowIndex(i);
+        } else if (pointsPatterns.test(cellValue)) {
+          detectedPointsIdx = i;
+          setPointsRow(parsed.rows[i]);
+          setPointsRowIndex(i);
         }
       }
-    } else {
-      setAnswerKeyRow(null);
-      setAnswerKeyRowIndex(-1);
     }
 
-    // Preview first 5 rows (excluding answer key row)
-    const previewRows = detectedKeyIdx >= 0 ? parsed.rows.filter((_, i) => i !== detectedKeyIdx) : parsed.rows;
+    if (detectedKeyIdx === -1) { setAnswerKeyRow(null); setAnswerKeyRowIndex(-1); }
+    if (detectedTextIdx === -1) { setQuestionTextRow(null); setQuestionTextRowIndex(-1); }
+    if (detectedPointsIdx === -1) { setPointsRow(null); setPointsRowIndex(-1); }
+
+    // Preview excluding metadata rows
+    const metadataIndices = new Set(
+      [detectedKeyIdx, detectedTextIdx, detectedPointsIdx].filter((i) => i >= 0)
+    );
+    const previewRows = parsed.rows.filter((_, i) => !metadataIndices.has(i));
     const preview: CsvPreviewRow[] = previewRows.slice(0, 5).map((row) => {
       const obj: CsvPreviewRow = {};
-      parsed.headers.forEach((h, i) => {
-        obj[h] = row[i] ?? '';
-      });
+      parsed.headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
       return obj;
     });
     setRows(preview);
@@ -768,15 +793,15 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
     .filter((i) => i !== -1);
 
   const hasRequiredMappings =
-    assignmentType === 'objective'
+    detectedType === 'objective'
       ? nameColIndex !== -1 && questionColIndices.length > 0 && answerKeyRow !== null
       : nameColIndex !== -1 && scoreColIndex !== -1;
 
   // Process CSV
   async function handleProcess() {
     if (!hasRequiredMappings) {
-      if (assignmentType === 'objective') {
-        toast('error', 'Map a student name column, at least one question answer column, and ensure an answer key row is present.');
+      if (detectedType === 'objective') {
+        toast('error', 'Ensure a student name column and question answer columns are mapped, and an ANSWER KEY row is present.');
       } else {
         toast('error', 'Map both a student name and score column.');
       }
@@ -786,29 +811,35 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
     setProcessing(true);
     try {
       let extractedStudents: object[];
-      let answerKey: Array<{ questionNumber: number; correctAnswer: string; points: number }> | null = null;
+      let answerKey: Array<{
+        questionNumber: number;
+        correctAnswer: string;
+        points: number;
+        questionText: string | null;
+      }> | null = null;
 
-      if (assignmentType === 'objective') {
-        // Build answer key from detected answer key row
+      const metadataIndices = new Set(
+        [answerKeyRowIndex, questionTextRowIndex, pointsRowIndex].filter((i) => i >= 0)
+      );
+
+      if (detectedType === 'objective') {
         answerKey = questionColIndices.map((colIdx, i) => {
           const header = headers[colIdx];
           const num = parseInt(header.replace(/\D/g, ''), 10) || (i + 1);
-          return {
-            questionNumber: num,
-            correctAnswer: answerKeyRow![colIdx]?.trim() ?? '',
-            points: 1,
-          };
+          const correctAnswer = answerKeyRow![colIdx]?.trim() ?? '';
+          const questionText = questionTextRow ? (questionTextRow[colIdx]?.trim() || null) : null;
+          const pts = pointsRow ? (parseFloat(pointsRow[colIdx]?.trim() ?? '') || 1) : 1;
+          return { questionNumber: num, correctAnswer, points: pts, questionText };
         });
 
-        // Filter out the answer key row from student data
         extractedStudents = allRows
-          .filter((_, i) => i !== answerKeyRowIndex)
+          .filter((_, i) => !metadataIndices.has(i))
           .filter((row) => row[nameColIndex]?.trim())
           .map((row, i) => {
             const rawName = row[nameColIndex]?.trim() ?? '';
-            const answers = questionColIndices.map((colIdx, i) => {
+            const answers = questionColIndices.map((colIdx, j) => {
               const header = headers[colIdx];
-              const num = parseInt(header.replace(/\D/g, ''), 10) || (i + 1);
+              const num = parseInt(header.replace(/\D/g, ''), 10) || (j + 1);
               return {
                 questionNumber: num,
                 extractedAnswer: row[colIdx]?.trim() ?? '',
@@ -816,30 +847,23 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
                 multipleAnswersDetected: false,
               };
             });
-
             return {
               extractionIndex: i,
               sourceImageIndex: 0,
               rawName,
               nameConfidence: 1.0,
               answers,
-              totalScore: {
-                raw: '0',
-                normalized: 0,
-                confidence: 1.0,
-              },
+              totalScore: { raw: '0', normalized: 0, confidence: 1.0 },
               flags: [],
             };
           });
       } else {
-        // Scored assignment: existing logic
         extractedStudents = allRows
           .filter((row) => row[nameColIndex]?.trim())
           .map((row, i) => {
             const rawName = row[nameColIndex]?.trim() ?? '';
             const rawScore = row[scoreColIndex]?.trim() ?? '0';
             const scoreNum = parseFloat(rawScore) || 0;
-
             return {
               extractionIndex: i,
               sourceImageIndex: 0,
@@ -856,12 +880,10 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
           });
       }
 
-      // Update assignment status
       await updateDoc(doc(db, 'assignments', assignmentId), {
         status: 'processing_images',
       });
 
-      // Call Cloud Function with CSV extraction result
       const runCsvExtraction = httpsCallable(functions, 'runCsvExtraction');
       await runCsvExtraction({
         assignmentId,
@@ -891,9 +913,7 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
       </div>
 
       <p className="text-sm text-muted-foreground">
-        {assignmentType === 'objective'
-          ? 'Upload a CSV with student names and per-question answers (Q1, Q2...). Include an ANSWER KEY row with correct answers.'
-          : 'Upload a CSV, TSV, or spreadsheet file with student names and scores (max 5 MB).'}
+        Upload a CSV, TSV, or spreadsheet file with student data (max 5 MB).
       </p>
 
       {/* Drop zone or file info */}
@@ -924,7 +944,7 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
             <Download className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Not sure about the format?</span>
             <a
-              href={assignmentType === 'objective' ? '/classpulse-csv-template-detailed.csv' : '/classpulse-csv-template.csv'}
+              href="/classpulse-csv-template.csv"
               download
               className="text-primary hover:underline font-medium"
             >
@@ -951,6 +971,13 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
                 setRows([]);
                 setAllRows([]);
                 setColumnMappings([]);
+                setDetectedType(null);
+                setAnswerKeyRow(null);
+                setAnswerKeyRowIndex(-1);
+                setQuestionTextRow(null);
+                setQuestionTextRowIndex(-1);
+                setPointsRow(null);
+                setPointsRowIndex(-1);
               }}
               className="text-muted-foreground hover:text-muted-foreground"
             >
@@ -1009,7 +1036,7 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
                     <option value="ignore">Ignore</option>
                     <option value="student_name">Student Name</option>
                     <option value="score">Score</option>
-                    {assignmentType === 'objective' && (
+                    {detectedType === 'objective' && (
                       <option value="question_answer">Question Answer</option>
                     )}
                   </select>
@@ -1026,8 +1053,11 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
             <div className="bg-success/10 border border-success/20 rounded-[--radius-md] p-3">
               <p className="text-sm text-success font-medium">Ready to process</p>
               <p className="text-xs text-success mt-1">
-                {assignmentType === 'objective'
-                  ? `${allRows.filter((row, i) => i !== answerKeyRowIndex && row[nameColIndex]?.trim()).length} students detected · ${questionColIndices.length} question column${questionColIndices.length !== 1 ? 's' : ''} mapped.`
+                {detectedType === 'objective'
+                  ? `${allRows.filter((row, i) => {
+                      const mdSet = new Set([answerKeyRowIndex, questionTextRowIndex, pointsRowIndex].filter((x) => x >= 0));
+                      return !mdSet.has(i) && row[nameColIndex]?.trim();
+                    }).length} students detected · ${questionColIndices.length} question column${questionColIndices.length !== 1 ? 's' : ''} mapped.`
                   : `${allRows.filter((r) => r[nameColIndex]?.trim()).length} students detected from ${allRows.length} data rows.`}
               </p>
             </div>
@@ -1036,20 +1066,30 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
           {!hasRequiredMappings && (
             <div className="flex items-center gap-2 text-sm text-warning">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {assignmentType === 'objective'
+              {detectedType === 'objective'
                 ? 'Map a student name column and at least one question answer column to continue.'
                 : 'Map both a student name column and a score column to continue.'}
             </div>
           )}
 
           {/* Answer key status indicator (objective only) */}
-          {assignmentType === 'objective' && file && (
+          {detectedType === 'objective' && file && (
             answerKeyRow ? (
               <div className="bg-success/10 border border-success/20 rounded-[--radius-md] p-3">
                 <p className="text-sm text-success font-medium">Answer key detected</p>
                 <p className="text-xs text-success mt-1">
                   Row &ldquo;{answerKeyRow[nameColIndex]}&rdquo; will be used as the answer key and excluded from student data.
                 </p>
+                {questionTextRow && (
+                  <p className="text-xs text-success mt-0.5">
+                    Question text row detected &mdash; will be included in answer key metadata.
+                  </p>
+                )}
+                {pointsRow && (
+                  <p className="text-xs text-success mt-0.5">
+                    Points row detected &mdash; custom point values will be used for scoring.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-warning">
@@ -1057,6 +1097,16 @@ function CsvUpload({ assignmentId, assignmentType }: { assignmentId: string; ass
                 No answer key row found. Add a row with &ldquo;ANSWER KEY&rdquo; in the name column.
               </div>
             )
+          )}
+
+          {/* Detected type badge */}
+          {file && detectedType && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium">Detected format:</span>
+              <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                {detectedType === 'objective' ? 'Grade For Me' : 'Already Scored'}
+              </span>
+            </div>
           )}
 
           {/* Process button */}
@@ -1225,7 +1275,7 @@ export default function Upload() {
             onStartExtraction={() => setShowProcessing(true)}
           />
         ) : (
-          <CsvUpload assignmentId={id} assignmentType={assignment.type ?? 'scored'} />
+          <CsvUpload assignmentId={id} />
         )}
       </div>
     </div>
